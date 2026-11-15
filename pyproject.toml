@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wow-seer"
+dynamic = ["version"]
+description = "MCP server that lets any AI read your WoW: Forever game state through the Seer addon"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+wow-seer = "wow_seer.__main__:main"
+
+[tool.setuptools]
+packages = ["wow_seer"]
+
+[tool.setuptools.dynamic]
+version = { attr = "wow_seer.__version__" }
+
+[tool.setuptools.package-data]
+wow_seer = ["addon/Seer/*"]

@@ -1,0 +1,11 @@
+## Interface: 16001
+## Title: Seer
+## Notes: Lets an AI read your game state through the wow-seer MCP server.
+## Author: wow-seer
+## Version: 0.1.0
+## SavedVariables: SeerDB
+
+Json.lua
+Collect.lua
+Strip.lua
+Seer.lua

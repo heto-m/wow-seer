@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: Seer Spike
+## Notes: Seer test addon: screenshot strip, slot loads, file probes.
+## SavedVariables: SeerSpikeResults
+
+SeerSpike.lua
