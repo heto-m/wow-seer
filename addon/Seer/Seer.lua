@@ -247,18 +247,36 @@ local OPEN = {
 	MERCHANT_CLOSED = { "merchantOpen", false },
 }
 
+local browseQueued = false
+
+local function RebuildBrowse()
+	browseQueued = false
+	local a = ns.auction or {}
+	local ok, browse = pcall(ns.AuctionBrowse)
+	if not ok then return end
+	a.browse, a.at = browse, time()
+	ns.auction = a
+	Mark("auction")
+end
+
+-- A big search fires hundreds of item-info events; rebuilding 500 rows on each one ran past the script time limit.
+local function QueueBrowse()
+	if browseQueued then return end
+	browseQueued = true
+	C_Timer.After(0.5, RebuildBrowse)
+end
+
 local function OnAuction(event, arg)
 	if event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_KEY_ITEM_INFO_RECEIVED" then
-		if ns.auctionMissingNames and ns.auction and ns.auction.browse then
-			ns.auction.browse = ns.AuctionBrowse()
-			Mark("auction")
-		end
+		if ns.auctionMissingNames and ns.auction and ns.auction.browse then QueueBrowse() end
+		return
+	end
+	if event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" or event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
+		QueueBrowse()
 		return
 	end
 	local a = ns.auction or {}
-	if event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" or event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
-		a.browse = ns.AuctionBrowse()
-	elseif event == "COMMODITY_SEARCH_RESULTS_UPDATED" then
+	if event == "COMMODITY_SEARCH_RESULTS_UPDATED" then
 		a.search = ns.AuctionCommodity(arg)
 	elseif event == "ITEM_SEARCH_RESULTS_UPDATED" then
 		a.search = ns.AuctionItem(arg)
