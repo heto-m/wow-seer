@@ -1,6 +1,6 @@
 {
   "name": "wow-seer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server that lets any AI read your WoW: Forever game state through the Seer addon",
   "license": "MIT",
   "author": "heto-m",
@@ -8,7 +8,13 @@
     "type": "git",
     "url": "git+https://github.com/heto-m/wow-seer.git"
   },
-  "keywords": ["mcp", "model-context-protocol", "world-of-warcraft", "wow", "addon"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "world-of-warcraft",
+    "wow",
+    "addon"
+  ],
   "type": "module",
   "bin": {
     "wow-seer": "dist/src/cli.js"
