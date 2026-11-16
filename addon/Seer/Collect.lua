@@ -321,6 +321,11 @@ local function KeyName(key)
 	return info and info.itemName or ItemFacts(key.itemID)
 end
 
+local function SuffixTooltip(key)
+	if not key.itemSuffix or key.itemSuffix == 0 then return nil end
+	return TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetItemKey, key.itemID, key.itemLevel, key.itemSuffix))
+end
+
 function ns.AuctionBrowse()
 	ns.auctionMissingNames = false
 	local rows = {}
@@ -330,7 +335,7 @@ function ns.AuctionBrowse()
 		rows[#rows + 1] = {
 			id = r.itemKey.itemID, itemLevel = r.itemKey.itemLevel, name = KeyName(r.itemKey) or name,
 			quality = quality, level = minLevel, type = subType, minPrice = r.minPrice, quantity = r.totalQuantity,
-			loc = EquipLoc(r.itemKey.itemID),
+			loc = EquipLoc(r.itemKey.itemID), tooltip = SuffixTooltip(r.itemKey),
 		}
 	end
 	return rows

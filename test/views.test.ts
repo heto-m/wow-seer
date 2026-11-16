@@ -112,6 +112,23 @@ test("auction filters and groups", () => {
   assert.deepEqual(out.search.prices, { cols: ["buyout", "quantity", "auctions"], rows: [[2248, 2, 2], [3000, 1, 1]] });
 });
 
+test("auction rows with a random suffix carry their stats", () => {
+  const a = { browse: [
+    { id: 10288, name: "Aro de sabio del profeta", level: 22, minPrice: 900, loc: "INVTYPE_HEAD",
+      tooltip: ["Aro de sabio del profeta", "Cabeza\tTela", "45 armadura", "+6 intelecto", "+6 espíritu"] },
+    { id: 10288, name: "Aro de sabio de sanación", level: 22, minPrice: 800, loc: "INVTYPE_HEAD",
+      tooltip: ["Aro de sabio de sanación", "Cabeza\tTela", "45 armadura",
+        "Equipar: Aumenta hasta 13 p. la sanación realizada con hechizos y efectos."] },
+  ] };
+  const out = views.auction(a, { slot: "head" });
+  const stats = out.browse.cols.indexOf("stats");
+  assert.deepEqual(out.browse.rows.map((r: any[]) => r[stats]), [
+    "+45 armadura, +6 intelecto, +6 espíritu",
+    "+45 armadura, +13 healing",
+  ]);
+  assert.ok(!views.auction({ browse: [{ id: 1, name: "x" }] }).browse.cols.includes("stats"));
+});
+
 test("missing data", () => {
   for (const fn of [views.player, views.talents, views.trainer, views.profession, views.merchant]) {
     assert.equal((fn as any)(null), null);

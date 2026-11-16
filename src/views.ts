@@ -165,6 +165,14 @@ export function simpleStats(lines: string[]): Record<string, number> {
   return stats;
 }
 
+function statsText(lines: any): string | null {
+  if (!Array.isArray(lines)) return null;
+  const parts = Object.entries(simpleStats(lines))
+    .filter(([k]) => k !== "dps")
+    .map(([k, n]) => `${n > 0 ? "+" : ""}${n} ${k}`);
+  return parts.length ? parts.join(", ") : null;
+}
+
 export function statDiff(newLines: string[], oldLines: string[]): Record<string, number> {
   const a = simpleStats(newLines);
   const b = simpleStats(oldLines);
@@ -372,9 +380,9 @@ export function auction(a: any, opts: AuctionFilter = {}): any {
       if (maxPrice != null && or(get(r, "minPrice"), 0) > maxPrice) return false;
       return minQuality == null || or(get(r, "quality"), 0) >= minQuality;
     };
-    const found = (rows as any[]).filter(keep);
+    const found = (rows as any[]).filter(keep).map((r) => ({ ...r, stats: statsText(get(r, "tooltip")) }));
     out.browse = table(pySlice(found, limit),
-      ["id", "name", "quality", "level", "type", "itemLevel", "minPrice", "quantity"]);
+      ["id", "name", "quality", "level", "type", "itemLevel", "minPrice", "quantity", "stats"]);
     if (found.length > limit) out.browse.more = found.length - limit;
   }
   const search = get(a, "search");
