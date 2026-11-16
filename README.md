@@ -1,51 +1,23 @@
 # Seer
 
-In-game state reader for WoW: Forever. Any AI reads it through an MCP server (`wow-seer`): Claude Code, Claude Desktop or a local model.
-
-The AI can see:
-
-- your character, money and base stats
-- your equipped gear with full tooltip text
-- your bags and bank
-- your quest log
-- your talents and skills
-- the last trainer, profession, vendor and auction house window you opened
-
-Everything is read-only. Seer never presses keys or acts in the game.
+Lets any AI (Claude Code, Claude Desktop, a local model) read your WoW: Forever state through an MCP server: character, gear with tooltips, bags, bank, quests, talents, and the last trainer, profession, vendor or auction house window you opened. Read-only: it never acts in the game.
 
 ## How it works
 
-The game gives addons no live way to send data out, except one: an addon may take a screenshot.
-
-1. When something changes, Seer collects the new state out of combat. It draws it as a small colour strip at the top-left corner and calls `Screenshot()`. The strip is visible for about 30-50 ms.
-2. The `wow-seer` server watches the Screenshots folder. It decodes each Seer strip, deletes the image and keeps the latest state for the AI.
-3. The server sends requests the other way, such as "resend bags" or "fetch the tooltip of item 4242". It writes them into request slots: small load-on-demand addons that Seer checks every 10 seconds. Each check uses up one slot. The default 1000 slots last about 2.8 hours of play, and `/reload` renews them.
-4. On logout or `/reload`, Seer also saves the state to its SavedVariables. The server falls back to that when the game is closed.
-
-Seer only sends data while the server is running. Without it, no screenshots pile up.
+The addon draws the state as a small colour strip and takes a screenshot (visible for ~40 ms). The server decodes the strip and deletes the image. Requests go the other way through small load-on-demand addons ("slots") that the addon checks every 10 s; `/reload` renews them.
 
 ## Install
 
-Needs Python 3.9 or newer, with no other dependencies.
+Needs Node.js 20+.
 
 ```sh
-# with the game closed
-python3 -m wow_seer install
+npx -y wow-seer install                           # with the game closed
+claude mcp add wow-seer -- npx -y wow-seer serve  # or run `npx -y wow-seer serve` as a stdio server in any client
 ```
 
-Then add the server to your AI client. For Claude Code:
-
-```sh
-claude mcp add wow-seer -- python3 -m wow_seer serve
-```
-
-Run the command from this folder, or set `PYTHONPATH` to it. Set `WOW_DIR` if your `_forever_` folder is not in a default place.
-
-In game, type `/seer` for the status, or `/seer test` to check what each collector reads.
+Set `WOW_DIR` if your `_forever_` folder isn't in a default place. In game, `/seer` shows the status.
 
 ## Tools
-
-Answers are filtered on the server from the state the game already pushed, so a narrow question costs a narrow answer and no extra screenshots.
 
 | Tool | Returns |
 |---|---|
@@ -62,14 +34,10 @@ Answers are filtered on the server from the state the game already pushed, so a 
 | `refresh` | asks the game to resend sections now (up to about 15 s) |
 | `seer_status` | connection state, slots left, decode errors |
 
-Lists come as `{cols, rows}`; money is in copper. Answers carry `age_seconds`, and `source` when they come from the state saved at the last logout or `/reload`.
+Money is in copper.
 
 ## Tests
 
 ```sh
-python3 -m unittest discover tests
+npm install && npm test   # the end-to-end tests need lua5.1
 ```
-
-The end-to-end test runs the real addon in a mock WoW. It needs `lua5.1`.
-
-`spike/` holds the test that proved the screenshot channel on the real client. Its results are in `spike/RESULTS.md`.
