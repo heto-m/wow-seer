@@ -16,8 +16,10 @@ export function compareVersions(a: string, b: string): number | null {
   return 0;
 }
 
+const series = (v: string) => v.trim().split(".").slice(0, 2).join(".");
+
 export function versionWarning(addon: unknown): string | null {
-  const order = typeof addon === "string" ? compareVersions(addon, VERSION) : null;
+  const order = typeof addon === "string" ? compareVersions(series(addon), series(VERSION)) : null;
   if (order === 0) return null;
   if (order === 1) {
     return `Seer addon ${addon} is newer than wow-seer ${VERSION}: update the MCP server (npx -y wow-seer@latest).`;
