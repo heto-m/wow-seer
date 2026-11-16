@@ -165,6 +165,14 @@ export function simpleStats(lines: string[]): Record<string, number> {
   return stats;
 }
 
+function statsText(lines: any): string | null {
+  if (!Array.isArray(lines)) return null;
+  const parts = Object.entries(simpleStats(lines))
+    .filter(([k]) => k !== "dps")
+    .map(([k, n]) => `${n > 0 ? "+" : ""}${n} ${k}`);
+  return parts.length ? parts.join(", ") : null;
+}
+
 export function statDiff(newLines: string[], oldLines: string[]): Record<string, number> {
   const a = simpleStats(newLines);
   const b = simpleStats(oldLines);
@@ -334,15 +342,17 @@ export function quests(qs: any, zone: string | null = null, unfinishedOnly = fal
   return { zones };
 }
 
-function groupPrices(rows: any[], priceKey: string): any[] {
+function groupPrices(rows: any[], priceKey: string, tooltips: any = null): any[] {
   const groups = new Map<string, any>();
   for (const r of rows) {
     const price = or(get(r, priceKey), null);
-    const key = [price, truthy(get(r, priceKey)) ? null : get(r, "bid"), get(r, "name")];
+    const item = get(r, "item");
+    const stats = truthy(tooltips) && typeof item === "string" ? statsText(tooltips[item]) : null;
+    const key = [price, truthy(get(r, priceKey)) ? null : get(r, "bid"), get(r, "name"), stats];
     const id = JSON.stringify(key);
     let g = groups.get(id);
     if (!g) {
-      g = { [priceKey]: key[0], bid: key[1], name: key[2], quantity: 0, auctions: 0 };
+      g = { [priceKey]: key[0], bid: key[1], name: key[2], stats: key[3], quantity: 0, auctions: 0 };
       groups.set(id, g);
     }
     g.quantity += or(get(r, "quantity"), 1);
@@ -356,12 +366,19 @@ export interface AuctionFilter {
   maxLevel?: number | null; maxPrice?: number | null; minQuality?: number | null; limit?: number;
 }
 
+function browseRows(browse: any): any[] | null {
+  if (browse === null || browse === undefined || Array.isArray(browse)) return browse ?? null;
+  const cols: string[] = Array.isArray(browse.cols) ? browse.cols : [];
+  const rows: any[][] = Array.isArray(browse.rows) ? browse.rows : [];
+  return rows.map((r) => Object.fromEntries(cols.map((c, i) => [c, r[i] === false ? null : r[i]])));
+}
+
 export function auction(a: any, opts: AuctionFilter = {}): any {
   if (!truthy(a)) return null;
   const { name, type, slot, minLevel, maxLevel, maxPrice, minQuality } = opts;
   const limit = opts.limit ?? 25;
   const out: any = {};
-  const rows = get(a, "browse");
+  const rows = browseRows(get(a, "browse"));
   if (rows !== null) {
     const keep = (r: any) => {
       if (truthy(name) && !matches(name, get(r, "name"))) return false;
@@ -381,10 +398,10 @@ export function auction(a: any, opts: AuctionFilter = {}): any {
   if (truthy(search)) {
     const searchRows: any[] = or(get(search, "rows"), []);
     const priceKey = searchRows.some((r) => r && "unitPrice" in r) ? "unitPrice" : "buyout";
-    const grouped = groupPrices(searchRows, priceKey);
+    const grouped = groupPrices(searchRows, priceKey, get(search, "tooltips"));
     for (const g of grouped) if (g.name === get(search, "name")) g.name = null;
     out.search = { id: get(search, "id"), name: get(search, "name"),
-      prices: table(pySlice(grouped, limit), [priceKey, "bid", "name", "quantity", "auctions"]) };
+      prices: table(pySlice(grouped, limit), [priceKey, "bid", "name", "stats", "quantity", "auctions"]) };
   }
   return out;
 }

@@ -112,6 +112,35 @@ test("auction filters and groups", () => {
   assert.deepEqual(out.search.prices, { cols: ["buyout", "quantity", "auctions"], rows: [[2248, 2, 2], [3000, 1, 1]] });
 });
 
+test("auction search shows each random-suffix tier's stats", () => {
+  const belt = "item:9799::::::::27:1487::1:1:12730::::::";
+  const weak = "item:9799::::::::27:1487::1:1:13204::::::";
+  const a = { search: { id: 9799, name: "Fajín de paño de hiedra de espíritu", rows: [
+    { buyout: 1188, quantity: 1, name: "Fajín de paño de hiedra de espíritu", item: belt },
+    { buyout: 1188, quantity: 1, name: "Fajín de paño de hiedra de espíritu", item: belt },
+    { buyout: 1188, quantity: 1, name: "Fajín de paño de hiedra de espíritu", item: weak },
+  ], tooltips: {
+    [belt]: ["Fajín de paño de hiedra de espíritu", "Cintura\tTela", "22 armadura", "+7 espíritu"],
+    [weak]: ["Fajín de paño de hiedra de espíritu", "Cintura\tTela", "22 armadura", "+3 espíritu"],
+  } } };
+  assert.deepEqual(views.auction(a).search.prices, { cols: ["buyout", "stats", "quantity", "auctions"], rows: [
+    [1188, "+22 armadura, +7 espíritu", 2, 2], [1188, "+22 armadura, +3 espíritu", 1, 1],
+  ] });
+});
+
+test("auction browse rows can arrive as columns", () => {
+  const a = { browse: {
+    cols: ["id", "itemLevel", "name", "quality", "level", "type", "minPrice", "quantity", "loc"],
+    rows: [
+      [9796, 27, "Manto de paño de hiedra del búho", 2, 22, "Tela", 3000, 1, "INVTYPE_SHOULDER"],
+      [4317, 25, "Pantalones Fénix", 2, 20, "Tela", 4289, 41, "INVTYPE_LEGS"],
+    ],
+  } };
+  const out = views.auction(a, { minLevel: 21 });
+  assert.deepEqual(out.browse.cols, ["id", "name", "quality", "level", "type", "itemLevel", "minPrice", "quantity"]);
+  assert.deepEqual(out.browse.rows, [[9796, "Manto de paño de hiedra del búho", 2, 22, "Tela", 27, 3000, 1]]);
+});
+
 test("missing data", () => {
   for (const fn of [views.player, views.talents, views.trainer, views.profession, views.merchant]) {
     assert.equal((fn as any)(null), null);

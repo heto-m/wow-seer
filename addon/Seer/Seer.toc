@@ -1,5 +1,6 @@
 ## Interface: 16001
 ## Title: Seer
+## IconTexture: Interface\AddOns\Seer\icon
 ## Notes: Lets an AI read your game state through the wow-seer MCP server.
 ## Notes-esES: Permite que una IA lea el estado de tu juego mediante el servidor MCP wow-seer.
 ## Notes-esMX: Permite que una IA lea el estado de tu juego mediante el servidor MCP wow-seer.
@@ -12,7 +13,7 @@
 ## Notes-zhCN: 让 AI 通过 wow-seer MCP 服务器读取你的游戏状态。
 ## Notes-zhTW: 讓 AI 透過 wow-seer MCP 伺服器讀取你的遊戲狀態。
 ## Author: wow-seer
-## Version: 0.3.6
+## Version: 0.4.0
 ## X-Curse-Project-ID: 1809157
 ## SavedVariables: SeerDB
 
