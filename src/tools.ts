@@ -264,7 +264,7 @@ export async function callTool(state: State, name: string, args: Args): Promise<
       if (views.LOC_SLOTS[item.loc]) out.slots = views.LOC_SLOTS[item.loc];
       return out;
     }
-    return { ...views.compare(item, data.equipment), ...meta };
+    return { ...views.compare(item, data.equipment), ...gather(state, ["equipment"]).meta };
   }
   if (name === "refresh") {
     const names = ((args.sections as string[]) || ["player", "equipment", "bags", "quests"]).filter((s) => s in SECTION_HELP);
