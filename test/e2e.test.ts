@@ -101,3 +101,36 @@ test("the real server reads the mock game end to end", { skip: !LUA && "needs lu
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
   }
 });
+
+test("the addon asks for PNG and sends nothing while screenshots are JPEG", { skip: !LUA && "needs lua5.1" }, () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seer-png-"));
+  process.env.WOW_DIR = path.join(tmp, "_forever_");
+  try {
+    fs.mkdirSync(path.join(process.env.WOW_DIR, "Interface", "AddOns"), { recursive: true });
+    game.install(3);
+    const run = (format: string) => {
+      const shots = fs.mkdtempSync(path.join(tmp, "shots-"));
+      const r = spawnSync(LUA!, [path.join(ROOT, "test", "mock_wow.lua"), game.addonsDir(), shots, "20"], {
+        encoding: "utf8",
+        env: { ...process.env, MOCK_SEND: "1", MOCK_FORMAT: format },
+      });
+      assert.equal(r.status, 0, r.stderr);
+      return r.stdout;
+    };
+    const locales = spawnSync(LUA!, [path.join(ROOT, "test", "mock_wow.lua"), game.addonsDir(), tmp, "0"], {
+      encoding: "utf8",
+      env: { ...process.env, MOCK_LOCALES: "1" },
+    });
+    assert.equal(locales.status, 0, locales.stderr);
+    assert.match(locales.stdout, /locales ok/);
+    const jpeg = run("jpeg");
+    assert.match(jpeg, /popup SEER_PNG jpeg/);
+    assert.match(jpeg, /shots 0/);
+    const png = run("png");
+    assert.doesNotMatch(png, /popup/);
+    assert.match(png, /shots [1-9]/);
+  } finally {
+    delete process.env.WOW_DIR;
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  }
+});

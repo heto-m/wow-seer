@@ -1,11 +1,22 @@
 ## Interface: 16001
 ## Title: Seer
 ## Notes: Lets an AI read your game state through the wow-seer MCP server.
+## Notes-esES: Permite que una IA lea el estado de tu juego mediante el servidor MCP wow-seer.
+## Notes-esMX: Permite que una IA lea el estado de tu juego mediante el servidor MCP wow-seer.
+## Notes-deDE: Lässt eine KI deinen Spielzustand über den MCP-Server wow-seer lesen.
+## Notes-frFR: Permet à une IA de lire l'état de votre jeu via le serveur MCP wow-seer.
+## Notes-ptBR: Permite que uma IA leia o estado do seu jogo pelo servidor MCP wow-seer.
+## Notes-itIT: Permette a un'IA di leggere lo stato del tuo gioco tramite il server MCP wow-seer.
+## Notes-ruRU: Позволяет ИИ читать состояние вашей игры через MCP-сервер wow-seer.
+## Notes-koKR: AI가 wow-seer MCP 서버를 통해 게임 상태를 읽을 수 있게 합니다.
+## Notes-zhCN: 让 AI 通过 wow-seer MCP 服务器读取你的游戏状态。
+## Notes-zhTW: 讓 AI 透過 wow-seer MCP 伺服器讀取你的遊戲狀態。
 ## Author: wow-seer
-## Version: 0.3.4
+## Version: 0.3.5
 ## X-Curse-Project-ID: 1809157
 ## SavedVariables: SeerDB
 
+Locale.lua
 Json.lua
 Collect.lua
 Strip.lua

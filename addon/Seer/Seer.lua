@@ -20,13 +20,52 @@ local msgId = 0
 local unconfirmed = {}
 local worldReady, loading = false, false
 local warned = {}
+local L = ns.L
 
-local function Say(text)
-	print("|cff9b7bffSeer|r " .. text)
+local function Say(text, ...)
+	print("|cff9b7bffSeer|r " .. (select("#", ...) > 0 and string.format(text, ...) or text))
+end
+
+local function Red(text)
+	return "|cffff4040" .. text .. "|r"
 end
 
 local function Alive()
 	return serverSeen ~= nil and GetTime() - serverSeen < ALIVE_FOR
+end
+
+local GetCVarValue = C_CVar and C_CVar.GetCVar or GetCVar
+local SetCVarValue = C_CVar and C_CVar.SetCVar or SetCVar
+
+local function ScreenshotFormat()
+	return GetCVarValue and GetCVarValue("screenshotFormat") or "png"
+end
+
+local function UsePng()
+	SetCVarValue("screenshotFormat", "png")
+	Say(L.PNG_NOW)
+end
+
+StaticPopupDialogs = StaticPopupDialogs or {}
+StaticPopupDialogs.SEER_PNG = {
+	text = L.PNG_POPUP,
+	button1 = L.PNG_USE,
+	button2 = L.PNG_LATER,
+	OnAccept = UsePng,
+	OnCancel = function() Say(L.PNG_WAITING) end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+}
+
+local function PngReady()
+	local format = ScreenshotFormat()
+	if format == "png" then return true end
+	if not warned.png then
+		warned.png = true
+		StaticPopup_Show("SEER_PNG", format)
+	end
+	return false
 end
 
 local function Mark(section)
@@ -68,7 +107,7 @@ local function HandleRequest(req)
 	elseif req.kind == "config" and type(req.cell) == "number" and req.cell >= 1 and req.cell <= 4 then
 		ns.Strip.cell = req.cell
 		db.cell = req.cell
-		Say("Server set the strip cell size to " .. req.cell .. " px.")
+		Say(L.CELL_BY_SERVER, req.cell)
 	end
 	if #acks > 0 then dirty.acks = dirty.acks or -1000 end
 end
@@ -78,7 +117,7 @@ local function Poll()
 	if nextSlot > slotCount then
 		if not warned.slots then
 			warned.slots = true
-			Say("All request slots are used. Type /reload to renew them. Changes are still sent.")
+			Say(L.SLOTS_USED)
 		end
 		return
 	end
@@ -120,6 +159,7 @@ local function Push(force)
 	local now = GetTime()
 	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
 	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
+	if not PngReady() then return end
 	local list = Ready(now)
 	if #list == 0 and not dirty.acks then return end
 	local sections = {}
@@ -155,7 +195,7 @@ local function Push(force)
 		for _, id in ipairs(sent) do acks[#acks + 1] = id end
 		if why ~= "combat" and not warned[why] then
 			warned[why] = true
-			Say("Sending failed: " .. tostring(why))
+			Say(L.SEND_FAILED, tostring(why))
 		end
 	end)
 	if not ok then
@@ -175,7 +215,7 @@ local function Tick()
 	end)
 	if not ok and not warned.tick then
 		warned.tick = true
-		Say("|cffff4040error|r " .. tostring(err))
+		Say(Red(L.ERROR) .. " " .. tostring(err))
 	end
 end
 
@@ -263,7 +303,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
 		elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
 			if arg1 == ADDON and not warned.blocked then
 				warned.blocked = true
-				Say(event .. ". Please report this.")
+				Say(L.BLOCKED, event)
 			end
 		elseif OPEN[event] then
 			local o = OPEN[event]
@@ -277,7 +317,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
 	end)
 	if not ok and not warned[event] then
 		warned[event] = true
-		Say("|cffff4040error|r in " .. event .. ": " .. tostring(err))
+		Say(Red(string.format(L.ERROR_IN, event, tostring(err))))
 	end
 end)
 
@@ -294,24 +334,29 @@ local function Test()
 	for _, s in ipairs(ns.SECTIONS) do
 		local ok, data = pcall(ns.collect[s])
 		if not ok then
-			Say(s .. ": |cffff4040error|r " .. tostring(data))
+			Say(s .. ": " .. Red(L.ERROR) .. " " .. tostring(data))
 		elseif data == nil then
-			Say(s .. ": nothing (window closed)")
+			Say(L.TEST_NOTHING, s)
 		else
 			local okJson, text = pcall(ns.ToJson, data)
-			Say(s .. ": " .. (okJson and (#text .. " bytes: " .. text:sub(1, 90)) or ("|cffff4040json error|r " .. tostring(text))))
+			if okJson then
+				Say(L.TEST_BYTES, s, #text, text:sub(1, 90))
+			else
+				Say(Red(string.format(L.TEST_JSON_ERROR, s, tostring(text))))
+			end
 		end
 	end
-	Say(string.format("Strip: %d columns, %d bytes per screenshot, cell %d px.",
-		ns.Strip.Columns(), ns.Strip.Capacity(), ns.Strip.cell))
+	Say(L.TEST_STRIP, ns.Strip.Columns(), ns.Strip.Capacity(), ns.Strip.cell)
 end
 
 local function Status()
-	Say(string.format("server %s, slots %d of %d used, %s.",
-		Alive() and "connected" or "not seen", nextSlot - 1, slotCount, db.paused and "paused" or "sending changes"))
+	Say(L.STATUS, Alive() and L.CONNECTED or L.NOT_SEEN, nextSlot - 1, slotCount,
+		db.paused and L.PAUSED_STATE or L.SENDING_STATE)
+	if ScreenshotFormat() ~= "png" then
+		Say(L.PNG_STATUS, ScreenshotFormat())
+	end
 	if ns.lastSent then
-		Say(string.format("last sent %d bytes %.0f s ago: %s", ns.lastSent.bytes, GetTime() - ns.lastSent.at,
-			table.concat(ns.lastSent.sections, ", ")))
+		Say(L.LAST_SENT, ns.lastSent.bytes, GetTime() - ns.lastSent.at, table.concat(ns.lastSent.sections, ", "))
 	end
 end
 
@@ -325,29 +370,31 @@ SlashCmdList.SEER = function(msg)
 			MarkAll()
 			for s in pairs(dirty) do dirty[s] = -1000 end
 			Push(true)
+		elseif cmd == "png" then
+			UsePng()
 		elseif cmd == "debug" then
 			ns.debug = not ns.debug
 			db.debug = ns.debug
-			Say("Debug " .. (ns.debug and "on" or "off") .. string.format(". worldReady %s, alive %s.", tostring(worldReady), tostring(Alive())))
+			Say(L.DEBUG, ns.debug and L.ON or L.OFF, tostring(worldReady), tostring(Alive()))
 		elseif cmd == "pause" then
 			db.paused = true
-			Say("Paused. Requests from the server still work.")
+			Say(L.PAUSED)
 		elseif cmd == "resume" then
 			db.paused = false
-			Say("Sending changes again.")
+			Say(L.RESUMED)
 		elseif (cmd == "rows" or cmd == "pre") and tonumber(arg) then
 			local v = math.max(1, math.min(16, math.floor(tonumber(arg))))
 			ns.Strip[cmd] = v
 			db[cmd] = v
-			Say(string.format("%s = %d (%d bytes per screenshot)", cmd, v, ns.Strip.Capacity()))
+			Say(L.SETTING, cmd, v, ns.Strip.Capacity())
 		elseif cmd == "cell" and tonumber(arg) then
 			ns.Strip.cell = math.max(1, math.min(4, tonumber(arg)))
 			db.cell = ns.Strip.cell
-			Say("Cell size " .. ns.Strip.cell .. " px.")
+			Say(L.CELL, ns.Strip.cell)
 		else
 			Status()
-			Say("/seer status | test | send | pause | resume | cell <1-4>")
+			Say("/seer status | test | send | png | pause | resume | cell <1-4>")
 		end
 	end)
-	if not ok then Say("|cffff4040error|r " .. tostring(err)) end
+	if not ok then Say(Red(L.ERROR) .. " " .. tostring(err)) end
 end
