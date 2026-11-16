@@ -321,13 +321,8 @@ local function KeyName(key)
 	return info and info.itemName or ItemFacts(key.itemID)
 end
 
-local function SuffixTooltip(key)
-	if not key.itemSuffix or key.itemSuffix == 0 then return nil end
-	return TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetItemKey, key.itemID, key.itemLevel, key.itemSuffix))
-end
-
 local MAX_BROWSE = 500
-local BROWSE_COLS = { "id", "itemLevel", "name", "quality", "level", "type", "minPrice", "quantity", "loc", "tooltip" }
+local BROWSE_COLS = { "id", "itemLevel", "name", "quality", "level", "type", "minPrice", "quantity", "loc" }
 
 -- Rows go out as arrays to halve the payload; false stands in for nil because nil breaks Lua array length.
 local function Cell(v)
@@ -344,7 +339,7 @@ function ns.AuctionBrowse()
 		local name, quality, minLevel, subType = ItemFacts(key.itemID)
 		rows[#rows + 1] = {
 			key.itemID, Cell(key.itemLevel), Cell(KeyName(key) or name), Cell(quality), Cell(minLevel), Cell(subType),
-			Cell(r.minPrice), Cell(r.totalQuantity), Cell(EquipLoc(key.itemID)), Cell(SuffixTooltip(key)),
+			Cell(r.minPrice), Cell(r.totalQuantity), Cell(EquipLoc(key.itemID)),
 		}
 	end
 	return { cols = BROWSE_COLS, rows = rows }
@@ -359,18 +354,24 @@ function ns.AuctionCommodity(itemID)
 	return { id = itemID, name = ItemName(itemID), rows = rows }
 end
 
+-- A random suffix's stats live only in each auction's link; one browse row can mix stat tiers.
 function ns.AuctionItem(key)
-	local rows = {}
+	local rows, tooltips = {}, {}
+	local suffixed = key.itemSuffix and key.itemSuffix ~= 0
 	for i = 1, math.min(Try(C_AuctionHouse.GetNumItemSearchResults, key) or 0, MAX_ROWS) do
 		local r = Try(C_AuctionHouse.GetItemSearchResultInfo, key, i)
 		if r then
+			local item = suffixed and type(r.itemLink) == "string" and r.itemLink:match("item:[%-%d:]+") or nil
+			if item and not tooltips[item] then
+				tooltips[item] = TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetHyperlink, r.itemLink)) or false
+			end
 			rows[#rows + 1] = {
 				buyout = r.buyoutAmount, bid = r.bidAmount, quantity = r.quantity,
-				name = LinkName(r.itemLink), timeLeft = r.timeLeft,
+				name = LinkName(r.itemLink), timeLeft = r.timeLeft, item = item,
 			}
 		end
 	end
-	return { id = key.itemID, name = KeyName(key), rows = rows }
+	return { id = key.itemID, name = KeyName(key), rows = rows, tooltips = suffixed and tooltips or nil }
 end
 
 function collect.auction()

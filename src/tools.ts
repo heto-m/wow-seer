@@ -111,7 +111,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "search_auction",
-    description: "Filter the auction house results the player last saw (browse list and the last item search). Rows with a random suffix (\"del profeta\") include their stats.",
+    description: "Filter the auction house results the player last saw (browse list and the last item search). Browse rows of a random-suffix item (\"del profeta\") carry no stats because one row can mix stat tiers; the item search shows each auction's stats.",
     inputSchema: schema({
       name: { ...STR, description: "part of the item name" },
       type: { ...STR, description: "part of the item subtype, e.g. Varitas" },
