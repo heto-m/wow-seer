@@ -2,7 +2,8 @@
 ## Title: Seer
 ## Notes: Lets an AI read your game state through the wow-seer MCP server.
 ## Author: wow-seer
-## Version: 0.1.0
+## Version: 0.2.0
+## X-Curse-Project-ID: 1809157
 ## SavedVariables: SeerDB
 
 Json.lua

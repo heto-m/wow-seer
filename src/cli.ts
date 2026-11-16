@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
 import { parseArgs } from "node:util";
 
 import { BadFrame, decode, NotSeer } from "./frame.js";
@@ -23,8 +24,13 @@ function install(slots: number): number {
     console.log("WoW is running. Close it first: new addons only load after a full restart.");
     return 1;
   }
-  const root = game.install(slots);
-  console.log(`Installed Seer and ${slots} request slots in ${root}`);
+  const { root, kept } = game.install(slots);
+  if (kept) {
+    console.log(`Kept the installed Seer ${kept}: it is newer than the one in wow-seer ${VERSION}.`);
+    console.log(`Installed ${slots} request slots in ${root}`);
+  } else {
+    console.log(`Installed Seer and ${slots} request slots in ${root}`);
+  }
   console.log("Next: start the game, then add the MCP server to your AI client, for example:");
   console.log("  claude mcp add wow-seer -- npx -y wow-seer serve");
   return 0;
@@ -88,7 +94,7 @@ function status(): number {
   console.log(`wow-seer ${VERSION}`);
   try {
     console.log(`game folder: ${game.wowDir()}`);
-    console.log(`addon installed: ${fs.existsSync(`${game.addonsDir()}/Seer`)}`);
+    console.log(`addon installed: ${fs.existsSync(path.join(game.addonsDir(), "Seer"))}`);
     console.log(`request slots: ${game.slotDirs().length}`);
     const { sections } = game.savedState();
     console.log(`saved sections: ${Object.keys(sections).sort().join(", ") || "none"}`);
@@ -135,10 +141,12 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
-  (e) => {
-    process.stderr.write(`wow-seer: ${(e as Error).message}\n`);
-    process.exit(1);
-  },
-);
+// A Windows console (and a macOS pipe) writes stdout asynchronously, so exit only once it drains.
+function exit(code: number): void {
+  process.stdout.write("", () => process.exit(code));
+}
+
+main(process.argv.slice(2)).then(exit, (e) => {
+  process.stderr.write(`wow-seer: ${(e as Error).message}\n`);
+  exit(1);
+});

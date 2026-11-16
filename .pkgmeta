@@ -1,0 +1,14 @@
+package-as: Seer
+
+move-folders:
+  Seer/addon/Seer: Seer
+
+ignore:
+  - src
+  - test
+  - spike
+  - package.json
+  - package-lock.json
+  - tsconfig.json
+  - README.md
+  - assets

@@ -4,6 +4,9 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { replaceFile } from "./shared.js";
+import { compareVersions } from "./version.js";
+
 export const ADDON_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "addon", "Seer");
 export const DEFAULT_SLOTS = 1000;
 export const SECTIONS = ["player", "equipment", "bags", "bank", "quests", "talents", "skills",
@@ -16,7 +19,7 @@ const DEFAULT_DIRS: Record<string, string[]> = {
     "~/.wine/drive_c/Program Files (x86)/World of Warcraft/_forever_",
   ],
   darwin: ["/Applications/World of Warcraft/_forever_"],
-  win32: ["C:\\Program Files (x86)\\World of Warcraft\\_forever_"],
+  win32: [path.win32.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "World of Warcraft", "_forever_")],
 };
 
 export class GameError extends Error {}
@@ -56,7 +59,10 @@ export function screenshotsDir(): string {
 }
 
 export function gameRunning(): boolean {
-  if (process.platform === "win32") return false;
+  if (process.platform === "win32") {
+    const r = spawnSync("tasklist", ["/FI", "IMAGENAME eq wow.exe", "/FO", "CSV", "/NH"], { encoding: "utf8" });
+    return !r.error && /"wow\.exe"/i.test(r.stdout);
+  }
   const pattern = process.platform === "darwin" ? "^World of Warcraft$" : "^wow.exe$";
   const r = spawnSync("pgrep", ["-i", pattern], { stdio: "ignore" });
   return !r.error && r.status === 0;
@@ -65,7 +71,7 @@ export function gameRunning(): boolean {
 export function writeAtomic(file: string, text: string): void {
   const tmp = file + ".tmp";
   fs.writeFileSync(tmp, text, "utf8");
-  fs.renameSync(tmp, file);
+  replaceFile(tmp, file);
 }
 
 export function slotDirs(): string[] {
@@ -73,11 +79,24 @@ export function slotDirs(): string[] {
   return fs.readdirSync(root).filter((d) => SLOT_RE.test(d) && isDir(path.join(root, d))).sort();
 }
 
-export function install(slots = DEFAULT_SLOTS): string {
+export function tocVersion(file: string): string | null {
+  try {
+    return /^## Version:[ \t]*(\S+)/m.exec(fs.readFileSync(file, "utf8"))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function install(slots = DEFAULT_SLOTS): { root: string; kept: string | null } {
   const root = addonsDir();
   const dest = path.join(root, "Seer");
-  fs.rmSync(dest, { recursive: true, force: true });
-  fs.cpSync(ADDON_SRC, dest, { recursive: true });
+  const installed = tocVersion(path.join(dest, "Seer.toc"));
+  const bundled = tocVersion(path.join(ADDON_SRC, "Seer.toc"));
+  const kept = installed && bundled && compareVersions(installed, bundled) === 1 ? installed : null;
+  if (!kept) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.cpSync(ADDON_SRC, dest, { recursive: true });
+  }
   for (const name of slotDirs()) {
     if (Number(name.slice(6)) > slots) fs.rmSync(path.join(root, name), { recursive: true, force: true });
   }
@@ -90,7 +109,7 @@ export function install(slots = DEFAULT_SLOTS): string {
     const body = path.join(folder, "body.lua");
     if (!fs.existsSync(body)) writeAtomic(body, "SeerInbox = nil\n");
   }
-  return root;
+  return { root, kept };
 }
 
 export function remove(): string {

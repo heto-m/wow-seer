@@ -127,10 +127,18 @@ C_QuestLog = {
 }
 
 local addonList = {}
-for line in io.popen('ls "' .. ADDONS .. '"'):lines() do addonList[#addonList + 1] = line end
+local list = package.config:sub(1, 1) == "\\" and 'dir /b "' or 'ls "'
+for line in io.popen(list .. ADDONS .. '"'):lines() do addonList[#addonList + 1] = line end
 C_AddOns = {
 	GetNumAddOns = function() return #addonList end,
 	GetAddOnInfo = function(i) return addonList[i] end,
+	GetAddOnMetadata = function(name, field)
+		local toc = io.open(ADDONS .. "/" .. name .. "/" .. name .. ".toc")
+		if not toc then return nil end
+		local text = toc:read("*a")
+		toc:close()
+		return text:match("## " .. field .. ":%s*([^\r\n]+)")
+	end,
 	EnableAddOn = function() end,
 	LoadAddOn = function(name)
 		local fn = assert(loadfile(ADDONS .. "/" .. name .. "/body.lua"))

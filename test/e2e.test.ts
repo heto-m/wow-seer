@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,10 +9,10 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import * as game from "../src/game.js";
+import { LUA } from "./lua.js";
 import { readCells, renderPng } from "./render.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const LUA = ["lua5.1", "luajit"].find((bin) => !spawnSync(bin, ["-v"], { stdio: "ignore" }).error);
 const META = {
   "io.modelcontextprotocol/protocolVersion": "2026-07-28",
   "io.modelcontextprotocol/clientCapabilities": {},
@@ -89,10 +90,14 @@ test("the real server reads the mock game end to end", { skip: !LUA && "needs lu
     const status = await client.tool("seer_status");
     assert.equal(status.role, "leader");
     assert.equal(status.last_error, null);
+    assert.equal(status.addon_version, status.server_version);
+    assert.equal(status.warning, undefined);
     await until(() => fs.readdirSync(path.join(wow, "Screenshots")).length === 0, 5);
   } finally {
+    const exited = once(child, "exit");
     child.kill();
+    await exited;
     delete process.env.WOW_DIR;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
   }
 });
