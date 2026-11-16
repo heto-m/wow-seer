@@ -41,3 +41,18 @@ Money is in copper.
 ```sh
 npm install && npm test   # the end-to-end tests need lua5.1
 ```
+
+## Releasing
+
+Set the same version in `package.json` and in `## Version:` of `addon/Seer/Seer.toc`, commit, then:
+
+```sh
+git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0
+```
+
+The tag runs `.github/workflows/release.yml`: it checks the versions, runs the tests, publishes to npm, uploads the addon to CurseForge as a Forever file and attaches the zip to a GitHub release.
+
+One-time setup:
+
+- npm: wow-seer → Settings → Trusted publishing → GitHub Actions, with user `heto-m`, repository `wow-seer`, workflow `release.yml`, no environment, and `npm publish` allowed. Without it, add an `NPM_TOKEN` repository secret (a granular token that can publish wow-seer).
+- CurseForge: create the World of Warcraft project, put `## X-Curse-Project-ID: <id>` in `Seer.toc`, and save a token from [API tokens](https://authors.curseforge.com/#/settings/api-tokens) as the `CF_API_TOKEN` repository secret. Without both, the CurseForge upload is skipped.

@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          # Trusted publishing needs npm >= 11.5.1; current Node 24 releases bundle it.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Check versions match the tag
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p 'require("./package.json").version')
+          toc=$(sed -n 's/^## Version://p' addon/Seer/Seer.toc | tr -d '[:space:]')
+          [ "$pkg" = "$want" ] || { echo "::error::package.json is $pkg, tag is $GITHUB_REF_NAME"; exit 1; }
+          case "$toc" in ""|"$want"|@project-version@) ;; *) echo "::error::Seer.toc is $toc, tag is $GITHUB_REF_NAME"; exit 1 ;; esac
+
+      - run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - run: npm ci
+      - run: npm test
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - uses: BigWigsMods/packager@v2
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
