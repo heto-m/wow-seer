@@ -152,8 +152,25 @@ C_AddOns = {
 }
 
 local ns = {}
-for _, file in ipairs({ "Json.lua", "Collect.lua", "Strip.lua", "Seer.lua" }) do
-	assert(loadfile(ADDONS .. "/Seer/" .. file))("Seer", ns)
+for line in io.lines(ADDONS .. "/Seer/Seer.toc") do
+	local file = line:match("^([%w_]+%.lua)%s*$")
+	if file then assert(loadfile(ADDONS .. "/Seer/" .. file))("Seer", ns) end
+end
+if os.getenv("MOCK_LOCALES") then
+	local function specs(s)
+		local out = {}
+		for p in s:gmatch("%%[%.%d]*%a") do out[#out + 1] = p end
+		return table.concat(out, " ")
+	end
+	for locale, t in pairs(ns.LOCALES) do
+		for key, en in pairs(ns.EN) do
+			assert(t[key], locale .. " misses " .. key)
+			assert(specs(t[key]) == specs(en), locale .. "." .. key .. " placeholders differ")
+		end
+		for key in pairs(t) do assert(ns.EN[key], locale .. " has unknown " .. key) end
+	end
+	print("locales ok")
+	os.exit(0)
 end
 Fire("ADDON_LOADED", "Seer")
 Fire("PLAYER_LOGIN")

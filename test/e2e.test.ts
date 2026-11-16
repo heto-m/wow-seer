@@ -117,6 +117,12 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
       assert.equal(r.status, 0, r.stderr);
       return r.stdout;
     };
+    const locales = spawnSync(LUA!, [path.join(ROOT, "test", "mock_wow.lua"), game.addonsDir(), tmp, "0"], {
+      encoding: "utf8",
+      env: { ...process.env, MOCK_LOCALES: "1" },
+    });
+    assert.equal(locales.status, 0, locales.stderr);
+    assert.match(locales.stdout, /locales ok/);
     const jpeg = run("jpeg");
     assert.match(jpeg, /popup SEER_PNG jpeg/);
     assert.match(jpeg, /shots 0/);
