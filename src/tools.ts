@@ -155,7 +155,7 @@ const TOOLS: SectionTool[] = [
 const EXTRA_TOOLS = [
   {
     name: "compare_item",
-    description: "An item's tooltip next to what is equipped in its slot, with the difference in simple stats.",
+    description: "An item's tooltip next to what is equipped in its slot, with the difference in stats, spell damage, healing and weapon DPS.",
     inputSchema: schema({ item_id: INT, timeout_seconds: TIMEOUT }, ["item_id"]),
   },
   {
