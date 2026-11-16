@@ -55,6 +55,14 @@ jobs:
         env:
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # The packager's notes list every commit, merge commits included; GitHub's list one line per PR.
+      - name: Use GitHub's release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body |
+            gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --notes-file -
+
       - name: Upload to CurseForge
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
