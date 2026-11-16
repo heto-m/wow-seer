@@ -22,7 +22,7 @@ export class LeaderLock {
 
   constructor(folder: string) {
     this.address = process.platform === "win32"
-      ? "\\\\.\\pipe\\wow-seer-" + createHash("sha1").update(path.resolve(folder)).digest("hex").slice(0, 16)
+      ? "\\\\.\\pipe\\wow-seer-" + createHash("sha1").update(path.resolve(folder).toLowerCase()).digest("hex").slice(0, 16)
       : path.join(folder, "leader.sock");
   }
 
@@ -42,9 +42,10 @@ export class LeaderLock {
     return this.listen();
   }
 
-  release(): void {
-    this.server?.close();
+  release(): Promise<void> {
+    const server = this.server;
     this.server = null;
+    return new Promise((resolve) => (server ? server.close(() => resolve()) : resolve()));
   }
 
   private listen(): Promise<boolean> {
@@ -71,10 +72,28 @@ export class LeaderLock {
   }
 }
 
+const BUSY = new Set(["EPERM", "EACCES", "EBUSY"]);
+
+export function replaceFile(tmp: string, file: string): void {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (e) {
+      // Windows refuses to replace a file another process has open; readers hold it only briefly.
+      if (process.platform !== "win32" || attempt >= 10 || !BUSY.has((e as NodeJS.ErrnoException).code ?? "")) {
+        fs.rmSync(tmp, { force: true });
+        throw e;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * attempt);
+    }
+  }
+}
+
 export function writeJson(file: string, data: unknown): void {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data), "utf8");
-  fs.renameSync(tmp, file);
+  replaceFile(tmp, file);
 }
 
 export function readJson(file: string): any {

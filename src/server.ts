@@ -37,6 +37,7 @@ export class State extends EventEmitter {
   nextId = (Math.floor(now()) % 10_000_000) * 100 + (process.pid % 10);
   assembler = new Assembler();
   seen = new Set<string>();
+  undeleted = new Set<string>();
   cell = 1;
   got: number[] = [];
   role: "leader" | "follower" | null = null;
@@ -116,10 +117,16 @@ export class State extends EventEmitter {
   }
 }
 
-export function processFile(state: State, file: string): boolean {
+export function processFile(state: State, file: string): boolean | null {
+  let bytes: Buffer;
+  try {
+    bytes = fs.readFileSync(file);
+  } catch {
+    return null;
+  }
   let header, payload;
   try {
-    ({ header, payload } = decode(fs.readFileSync(file)));
+    ({ header, payload } = decode(bytes));
   } catch (e) {
     if (e instanceof NotSeer) return false;
     if (!(e instanceof Error)) throw e;
@@ -131,12 +138,12 @@ export function processFile(state: State, file: string): boolean {
       state.meta.bad_frames = 0;
       state.request("config", { cell: state.cell });
     }
-    remove(file);
+    discard(state, file);
     return true;
   }
   state.meta.frames += 1;
   state.meta.last_frame = now();
-  remove(file);
+  discard(state, file);
   const text = state.assembler.add(header, payload);
   if (text !== null) {
     try {
@@ -150,10 +157,18 @@ export function processFile(state: State, file: string): boolean {
   return true;
 }
 
-function remove(file: string): void {
+function remove(file: string): boolean {
   try {
     fs.unlinkSync(file);
-  } catch {}
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT";
+  }
+}
+
+// On Windows the game may still hold a screenshot open, so unlink fails until it lets go.
+function discard(state: State, file: string): void {
+  if (!remove(file)) state.undeleted.add(file);
 }
 
 function mtime(file: string): number {
@@ -175,6 +190,7 @@ function startWatch(state: State): () => void {
     } catch {
       return;
     }
+    for (const file of state.undeleted) if (remove(file)) state.undeleted.delete(file);
     names.sort((a, b) => mtime(path.join(folder, a)) - mtime(path.join(folder, b)));
     for (const name of names) {
       if (state.seen.has(name) || !name.toLowerCase().endsWith(".png")) continue;
@@ -190,8 +206,7 @@ function startWatch(state: State): () => void {
         continue;
       }
       sizes.delete(name);
-      state.seen.add(name);
-      processFile(state, file);
+      if (processFile(state, file) !== null) state.seen.add(name);
     }
   }, SCAN_EVERY);
   return () => clearInterval(timer);
@@ -242,11 +257,11 @@ function takeRequests(state: State, folder: string): boolean {
   const dir = path.join(folder, "requests");
   let names: string[] = [];
   try {
-    names = fs.readdirSync(dir).sort();
+    names = fs.readdirSync(dir).filter((n) => n.endsWith(".json")).sort();
   } catch {}
   for (const name of names) {
     const file = path.join(dir, name);
-    const req = name.endsWith(".json") ? readJson(file) : null;
+    const req = readJson(file);
     remove(file);
     if (req && typeof req === "object" && Number.isInteger(req.id) && state.pending.every((r) => r.id !== req.id)) {
       state.pending.push(req);
@@ -287,8 +302,8 @@ export function startBackground(state: State): () => void {
       if (state.role === "leader") {
         if (takeRequests(state, folder)) state.changed();
         if (state.version !== published) {
-          published = state.version;
           writeJson(stateFile, state.snapshot());
+          published = state.version;
         }
       } else {
         const m = mtime(stateFile);
@@ -298,6 +313,8 @@ export function startBackground(state: State): () => void {
           if (data) state.load(data);
         }
       }
+    } catch (e) {
+      log("sync failed:", (e as Error).message);
     } finally {
       busy = false;
     }

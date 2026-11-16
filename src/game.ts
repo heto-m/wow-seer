@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { replaceFile } from "./shared.js";
 import { compareVersions } from "./version.js";
 
 export const ADDON_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "addon", "Seer");
@@ -18,7 +19,7 @@ const DEFAULT_DIRS: Record<string, string[]> = {
     "~/.wine/drive_c/Program Files (x86)/World of Warcraft/_forever_",
   ],
   darwin: ["/Applications/World of Warcraft/_forever_"],
-  win32: ["C:\\Program Files (x86)\\World of Warcraft\\_forever_"],
+  win32: [path.win32.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "World of Warcraft", "_forever_")],
 };
 
 export class GameError extends Error {}
@@ -58,7 +59,10 @@ export function screenshotsDir(): string {
 }
 
 export function gameRunning(): boolean {
-  if (process.platform === "win32") return false;
+  if (process.platform === "win32") {
+    const r = spawnSync("tasklist", ["/FI", "IMAGENAME eq wow.exe", "/FO", "CSV", "/NH"], { encoding: "utf8" });
+    return !r.error && /"wow\.exe"/i.test(r.stdout);
+  }
   const pattern = process.platform === "darwin" ? "^World of Warcraft$" : "^wow.exe$";
   const r = spawnSync("pgrep", ["-i", pattern], { stdio: "ignore" });
   return !r.error && r.status === 0;
@@ -67,7 +71,7 @@ export function gameRunning(): boolean {
 export function writeAtomic(file: string, text: string): void {
   const tmp = file + ".tmp";
   fs.writeFileSync(tmp, text, "utf8");
-  fs.renameSync(tmp, file);
+  replaceFile(tmp, file);
 }
 
 export function slotDirs(): string[] {

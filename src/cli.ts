@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
 import { parseArgs } from "node:util";
 
 import { BadFrame, decode, NotSeer } from "./frame.js";
@@ -93,7 +94,7 @@ function status(): number {
   console.log(`wow-seer ${VERSION}`);
   try {
     console.log(`game folder: ${game.wowDir()}`);
-    console.log(`addon installed: ${fs.existsSync(`${game.addonsDir()}/Seer`)}`);
+    console.log(`addon installed: ${fs.existsSync(path.join(game.addonsDir(), "Seer"))}`);
     console.log(`request slots: ${game.slotDirs().length}`);
     const { sections } = game.savedState();
     console.log(`saved sections: ${Object.keys(sections).sort().join(", ") || "none"}`);
@@ -140,10 +141,12 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
-  (e) => {
-    process.stderr.write(`wow-seer: ${(e as Error).message}\n`);
-    process.exit(1);
-  },
-);
+// A Windows console (and a macOS pipe) writes stdout asynchronously, so exit only once it drains.
+function exit(code: number): void {
+  process.stdout.write("", () => process.exit(code));
+}
+
+main(process.argv.slice(2)).then(exit, (e) => {
+  process.stderr.write(`wow-seer: ${(e as Error).message}\n`);
+  exit(1);
+});
