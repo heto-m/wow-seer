@@ -3,7 +3,16 @@ name: CI
 on:
   push:
     branches: [main]
+    paths: &code
+      - "src/**"
+      - "test/**"
+      - "addon/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths: *code
 
 concurrency:
   group: ci-${{ github.ref }}
