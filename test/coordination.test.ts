@@ -26,7 +26,8 @@ test("one leader, followers forward requests and see its state", async () => {
   } finally {
     for (const stop of stops) stop();
     delete process.env.WOW_SEER_DIR;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    delete process.env.WOW_DIR;
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -36,11 +37,11 @@ test("a stale lock socket left by a dead process is taken over", async () => {
     const first = new LeaderLock(tmp);
     assert.ok(await first.acquire());
     assert.equal(await new LeaderLock(tmp).acquire(), false);
-    first.release();
+    await first.release();
     if (process.platform !== "win32") fs.writeFileSync(path.join(tmp, "leader.sock"), "");
     const second = new LeaderLock(tmp);
     assert.ok(await second.acquire());
-    second.release();
+    await second.release();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

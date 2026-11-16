@@ -7,10 +7,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as game from "../src/game.js";
 import { Assembler, NotSeer, decode } from "../src/frame.js";
+import { LUA } from "./lua.js";
 import { readCells, renderPng } from "./render.js";
 
 const MOCK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "test", "mock_wow.lua");
-const LUA = ["lua5.1", "luajit"].find((bin) => !spawnSync(bin, ["-v"], { stdio: "ignore" }).error);
 
 function messages(seconds: number, opts: { width?: number; sx?: number; sy?: number; env?: Record<string, string> } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seer-"));
