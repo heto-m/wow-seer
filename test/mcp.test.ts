@@ -111,4 +111,10 @@ test("seer_status warns when the addon version differs", async () => {
 
   state.apply({ msg: 4, t: Date.now() / 1000, version: newer.server_version });
   assert.equal((await status(state)).warning, undefined);
+
+  const [major, minor] = newer.server_version.split(".");
+  state.apply({ msg: 5, t: Date.now() / 1000, version: `${major}.${minor}.999` });
+  assert.equal((await status(state)).warning, undefined);
+  state.apply({ msg: 6, t: Date.now() / 1000, version: `${major}.${Number(minor) + 1}.0` });
+  assert.match((await status(state)).warning, /update the MCP server/);
 });
