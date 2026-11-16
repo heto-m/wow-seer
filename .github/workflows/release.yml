@@ -66,9 +66,10 @@ jobs:
           version_id=$(curl -sSf -H "x-api-token: $CF_API_TOKEN" https://wow.curseforge.com/api/game/versions |
             jq --arg v "$game_version" '[.[] | select(.gameVersionTypeID == 88568 and .name == $v) | .id][0]')
           [ "$version_id" != null ] || { echo "::error::CurseForge has no Forever version $game_version"; exit 1; }
-          jq -n --arg name "Seer ${GITHUB_REF_NAME#v}" --argjson gv "$version_id" \
+          case "$GITHUB_REF_NAME" in v0.*) type=beta ;; *) type=release ;; esac
+          jq -n --arg name "Seer ${GITHUB_REF_NAME#v}" --argjson gv "$version_id" --arg type "$type" \
             --arg log "https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" \
-            '{displayName: $name, gameVersions: [$gv], releaseType: "release", changelog: $log, changelogType: "text"}' > metadata.json
+            '{displayName: $name, gameVersions: [$gv], releaseType: $type, changelog: $log, changelogType: "text"}' > metadata.json
           curl -sSf --retry 3 -H "x-api-token: $CF_API_TOKEN" \
             -F "metadata=<metadata.json" -F "file=@$(ls .release/*.zip)" \
             "https://wow.curseforge.com/api/projects/$project/upload-file"
