@@ -1,5 +1,6 @@
 import * as game from "./game.js";
 import { now, State } from "./server.js";
+import { VERSION, versionWarning } from "./version.js";
 import * as views from "./views.js";
 
 export const SECTION_HELP: Record<string, string> = {
@@ -290,8 +291,12 @@ export async function callTool(state: State, name: string, args: Args): Promise<
       last_error: state.meta.last_error,
       cell_px: state.cell,
       client_build: state.addon.build ?? null,
+      server_version: VERSION,
+      addon_version: last ? state.addon.version || "unknown" : null,
       role: state.role,
     };
+    const warning = last ? versionWarning(state.addon.version) : null;
+    if (warning) status.warning = warning;
     if (state.addon.slots) status.request_slots_left = Math.max(0, state.addon.slots - state.addon.slot + 1);
     return status;
   }

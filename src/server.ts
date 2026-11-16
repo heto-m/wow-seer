@@ -5,6 +5,7 @@ import path from "node:path";
 import { Assembler, decode, NotSeer } from "./frame.js";
 import * as game from "./game.js";
 import { LeaderLock, readJson, sharedDir, writeJson } from "./shared.js";
+import { versionWarning } from "./version.js";
 
 const SCAN_EVERY = 300;
 const SYNC_EVERY = 500;
@@ -41,6 +42,7 @@ export class State extends EventEmitter {
   role: "leader" | "follower" | null = null;
   folder: string | null = null;
   version = 0;
+  warned = new Set<string>();
 
   changed(): void {
     this.version += 1;
@@ -82,7 +84,12 @@ export class State extends EventEmitter {
     const acks = new Set<number>(msg.acks || []);
     this.pending = this.pending.filter((r) => !acks.has(r.id));
     this.acked = [...this.acked, ...[...acks].sort((a, b) => a - b)].slice(-200);
-    this.addon = { slot: msg.slot, slots: msg.slots, build: msg.build, last_message: t };
+    this.addon = { slot: msg.slot, slots: msg.slots, build: msg.build, version: msg.version, last_message: t };
+    const warning = versionWarning(msg.version);
+    if (warning && !this.warned.has(warning)) {
+      this.warned.add(warning);
+      log(warning);
+    }
     this.changed();
     this.emit("message", msg);
   }

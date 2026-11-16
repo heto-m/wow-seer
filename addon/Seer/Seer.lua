@@ -6,6 +6,8 @@ local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
 local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills" }
+local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
 
 ns.wantedItems = {}
 local db
@@ -134,7 +136,7 @@ local function Push(force)
 	acks = {}
 	local text = ns.ToJson({
 		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
-		build = (GetBuildInfo()), acks = sent, sections = sections,
+		build = (GetBuildInfo()), version = VERSION, acks = sent, sections = sections,
 	})
 	local started = GetTime()
 	for _, s in ipairs(list) do dirty[s] = nil end

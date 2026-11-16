@@ -78,3 +78,37 @@ test("notifications get no reply and cancelled requests stay silent", async () =
   await call;
   assert.deepEqual(lines, []);
 });
+
+test("seer_status warns when the addon version differs", async () => {
+  const status = async (state: State) => {
+    const r = await ask({ id: 20, method: "tools/call", params: { _meta: MODERN, name: "seer_status", arguments: {} } }, state);
+    return JSON.parse(r.result.content[0].text);
+  };
+  const idle = await status(new State());
+  assert.equal(idle.addon_version, null);
+  assert.equal(idle.warning, undefined);
+
+  const write = process.stderr.write;
+  const logged: string[] = [];
+  process.stderr.write = ((line: string) => logged.push(line)) as any;
+  const state = new State();
+  try {
+    state.apply({ msg: 1, t: Date.now() / 1000 });
+    state.apply({ msg: 2, t: Date.now() / 1000 });
+  } finally {
+    process.stderr.write = write;
+  }
+  assert.equal(logged.length, 1);
+  const old = await status(state);
+  assert.equal(old.addon_version, "unknown");
+  assert.match(old.warning, /wow-seer install/);
+  assert.equal(logged[0], `wow-seer: ${old.warning}\n`);
+
+  state.apply({ msg: 3, t: Date.now() / 1000, version: "99.0.0" });
+  const newer = await status(state);
+  assert.equal(newer.addon_version, "99.0.0");
+  assert.match(newer.warning, /update the MCP server/);
+
+  state.apply({ msg: 4, t: Date.now() / 1000, version: newer.server_version });
+  assert.equal((await status(state)).warning, undefined);
+});

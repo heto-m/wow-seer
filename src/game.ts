@@ -4,6 +4,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { compareVersions } from "./version.js";
+
 export const ADDON_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "addon", "Seer");
 export const DEFAULT_SLOTS = 1000;
 export const SECTIONS = ["player", "equipment", "bags", "bank", "quests", "talents", "skills",
@@ -73,11 +75,24 @@ export function slotDirs(): string[] {
   return fs.readdirSync(root).filter((d) => SLOT_RE.test(d) && isDir(path.join(root, d))).sort();
 }
 
-export function install(slots = DEFAULT_SLOTS): string {
+export function tocVersion(file: string): string | null {
+  try {
+    return /^## Version:[ \t]*(\S+)/m.exec(fs.readFileSync(file, "utf8"))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function install(slots = DEFAULT_SLOTS): { root: string; kept: string | null } {
   const root = addonsDir();
   const dest = path.join(root, "Seer");
-  fs.rmSync(dest, { recursive: true, force: true });
-  fs.cpSync(ADDON_SRC, dest, { recursive: true });
+  const installed = tocVersion(path.join(dest, "Seer.toc"));
+  const bundled = tocVersion(path.join(ADDON_SRC, "Seer.toc"));
+  const kept = installed && bundled && compareVersions(installed, bundled) === 1 ? installed : null;
+  if (!kept) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.cpSync(ADDON_SRC, dest, { recursive: true });
+  }
   for (const name of slotDirs()) {
     if (Number(name.slice(6)) > slots) fs.rmSync(path.join(root, name), { recursive: true, force: true });
   }
@@ -90,7 +105,7 @@ export function install(slots = DEFAULT_SLOTS): string {
     const body = path.join(folder, "body.lua");
     if (!fs.existsSync(body)) writeAtomic(body, "SeerInbox = nil\n");
   }
-  return root;
+  return { root, kept };
 }
 
 export function remove(): string {

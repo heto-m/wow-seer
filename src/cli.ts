@@ -23,8 +23,13 @@ function install(slots: number): number {
     console.log("WoW is running. Close it first: new addons only load after a full restart.");
     return 1;
   }
-  const root = game.install(slots);
-  console.log(`Installed Seer and ${slots} request slots in ${root}`);
+  const { root, kept } = game.install(slots);
+  if (kept) {
+    console.log(`Kept the installed Seer ${kept}: it is newer than the one in wow-seer ${VERSION}.`);
+    console.log(`Installed ${slots} request slots in ${root}`);
+  } else {
+    console.log(`Installed Seer and ${slots} request slots in ${root}`);
+  }
   console.log("Next: start the game, then add the MCP server to your AI client, for example:");
   console.log("  claude mcp add wow-seer -- npx -y wow-seer serve");
   return 0;

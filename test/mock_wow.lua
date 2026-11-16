@@ -131,6 +131,13 @@ for line in io.popen('ls "' .. ADDONS .. '"'):lines() do addonList[#addonList + 
 C_AddOns = {
 	GetNumAddOns = function() return #addonList end,
 	GetAddOnInfo = function(i) return addonList[i] end,
+	GetAddOnMetadata = function(name, field)
+		local toc = io.open(ADDONS .. "/" .. name .. "/" .. name .. ".toc")
+		if not toc then return nil end
+		local text = toc:read("*a")
+		toc:close()
+		return text:match("## " .. field .. ":%s*([^\r\n]+)")
+	end,
 	EnableAddOn = function() end,
 	LoadAddOn = function(name)
 		local fn = assert(loadfile(ADDONS .. "/" .. name .. "/body.lua"))
