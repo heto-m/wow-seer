@@ -364,12 +364,19 @@ export interface AuctionFilter {
   maxLevel?: number | null; maxPrice?: number | null; minQuality?: number | null; limit?: number;
 }
 
+function browseRows(browse: any): any[] | null {
+  if (browse === null || browse === undefined || Array.isArray(browse)) return browse ?? null;
+  const cols: string[] = Array.isArray(browse.cols) ? browse.cols : [];
+  const rows: any[][] = Array.isArray(browse.rows) ? browse.rows : [];
+  return rows.map((r) => Object.fromEntries(cols.map((c, i) => [c, r[i] === false ? null : r[i]])));
+}
+
 export function auction(a: any, opts: AuctionFilter = {}): any {
   if (!truthy(a)) return null;
   const { name, type, slot, minLevel, maxLevel, maxPrice, minQuality } = opts;
   const limit = opts.limit ?? 25;
   const out: any = {};
-  const rows = get(a, "browse");
+  const rows = browseRows(get(a, "browse"));
   if (rows !== null) {
     const keep = (r: any) => {
       if (truthy(name) && !matches(name, get(r, "name"))) return false;

@@ -326,19 +326,28 @@ local function SuffixTooltip(key)
 	return TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetItemKey, key.itemID, key.itemLevel, key.itemSuffix))
 end
 
+local MAX_BROWSE = 500
+local BROWSE_COLS = { "id", "itemLevel", "name", "quality", "level", "type", "minPrice", "quantity", "loc", "tooltip" }
+
+-- Rows go out as arrays to halve the payload; false stands in for nil because nil breaks Lua array length.
+local function Cell(v)
+	if v == nil then return false end
+	return v
+end
+
 function ns.AuctionBrowse()
 	ns.auctionMissingNames = false
 	local rows = {}
 	for i, r in ipairs(Try(C_AuctionHouse.GetBrowseResults) or {}) do
-		if i > MAX_ROWS then break end
-		local name, quality, minLevel, subType = ItemFacts(r.itemKey.itemID)
+		if i > MAX_BROWSE then break end
+		local key = r.itemKey
+		local name, quality, minLevel, subType = ItemFacts(key.itemID)
 		rows[#rows + 1] = {
-			id = r.itemKey.itemID, itemLevel = r.itemKey.itemLevel, name = KeyName(r.itemKey) or name,
-			quality = quality, level = minLevel, type = subType, minPrice = r.minPrice, quantity = r.totalQuantity,
-			loc = EquipLoc(r.itemKey.itemID), tooltip = SuffixTooltip(r.itemKey),
+			key.itemID, Cell(key.itemLevel), Cell(KeyName(key) or name), Cell(quality), Cell(minLevel), Cell(subType),
+			Cell(r.minPrice), Cell(r.totalQuantity), Cell(EquipLoc(key.itemID)), Cell(SuffixTooltip(key)),
 		}
 	end
-	return rows
+	return { cols = BROWSE_COLS, rows = rows }
 end
 
 function ns.AuctionCommodity(itemID)

@@ -129,6 +129,19 @@ test("auction rows with a random suffix carry their stats", () => {
   assert.ok(!views.auction({ browse: [{ id: 1, name: "x" }] }).browse.cols.includes("stats"));
 });
 
+test("auction browse rows can arrive as columns", () => {
+  const a = { browse: {
+    cols: ["id", "itemLevel", "name", "quality", "level", "type", "minPrice", "quantity", "loc", "tooltip"],
+    rows: [
+      [9796, 27, "Manto de paño de hiedra del búho", 2, 22, "Tela", 3000, 1, "INVTYPE_SHOULDER", ["Hombro\tTela", "+5 intelecto"]],
+      [4317, 25, "Pantalones Fénix", 2, 20, "Tela", 4289, 41, "INVTYPE_LEGS", false],
+    ],
+  } };
+  const out = views.auction(a, { minLevel: 21 });
+  assert.deepEqual(out.browse.cols, ["id", "name", "quality", "level", "type", "itemLevel", "minPrice", "quantity", "stats"]);
+  assert.deepEqual(out.browse.rows, [[9796, "Manto de paño de hiedra del búho", 2, 22, "Tela", 27, 3000, 1, "+5 intelecto"]]);
+});
+
 test("missing data", () => {
   for (const fn of [views.player, views.talents, views.trainer, views.profession, views.merchant]) {
     assert.equal((fn as any)(null), null);
