@@ -26,20 +26,22 @@ Seer only sends data while the server is running. Without it, no screenshots pil
 
 ## Install
 
-Needs Python 3.9 or newer, with no other dependencies.
+Needs Node.js 20 or newer. The server has no runtime dependencies.
 
 ```sh
 # with the game closed
-python3 -m wow_seer install
+npx -y wow-seer install
 ```
 
 Then add the server to your AI client. For Claude Code:
 
 ```sh
-claude mcp add wow-seer -- python3 -m wow_seer serve
+claude mcp add wow-seer -- npx -y wow-seer serve
 ```
 
-Run the command from this folder, or set `PYTHONPATH` to it. Set `WOW_DIR` if your `_forever_` folder is not in a default place.
+For other clients, run `npx -y wow-seer serve` as a stdio MCP server. Set `WOW_DIR` if your `_forever_` folder is not in a default place.
+
+The server speaks MCP 2026-07-28, which has no handshake, and still answers `initialize` from clients on older revisions (2024-11-05 to 2025-11-25).
 
 In game, type `/seer` for the status, or `/seer test` to check what each collector reads.
 
@@ -67,9 +69,10 @@ Lists come as `{cols, rows}`; money is in copper. Answers carry `age_seconds`, a
 ## Tests
 
 ```sh
-python3 -m unittest discover tests
+npm install
+npm test
 ```
 
-The end-to-end test runs the real addon in a mock WoW. It needs `lua5.1`.
+The end-to-end tests run the real addon in a mock WoW and the real server over stdio. They need `lua5.1`.
 
 `spike/` holds the test that proved the screenshot channel on the real client. Its results are in `spike/RESULTS.md`.
