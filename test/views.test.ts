@@ -67,6 +67,32 @@ test("compare", () => {
   assert.equal(out.equipped[0].slot, "finger1");
 });
 
+test("compare reads spell power and weapon dps", () => {
+  const trogg = { id: 272996, name: "Cetro trogg", loc: "INVTYPE_WEAPONMAINHAND", tooltip: [
+    "Cetro trogg", "Mano principal\tMaza", "13 - 26 Daño\tVelocidad 2,40", "(8,1 daño por segundo)", "+4 espíritu",
+    "Equipar: Aumenta hasta 33 p. la sanación realizada y hasta 11 p. el daño infligido con todos los hechizos y efectos mágicos.",
+  ] };
+  const scepter = { slot: "mainhand", id: 271216, name: "Cetro de los abandonados", tooltip: [
+    "Cetro de los abandonados", "Mano principal\tMaza", "17 - 33 Daño\tVelocidad 2,60", "(9,6 daño por segundo)",
+    "+5 resistencia a Sombras",
+    "Equipar: Aumenta hasta 24 p. el daño infligido y la sanación realizada con hechizos y efectos mágicos.",
+  ] };
+  assert.deepEqual(views.compare(trogg, [scepter]).equipped[0].diff, {
+    dps: -1.5, espíritu: 4, healing: 9, "resistencia a Sombras": -5, "spell damage": -13,
+  });
+  assert.deepEqual(
+    views.simpleStats(["Equipar: Aumenta hasta 4 p. el daño infligido con hechizos y efectos de Fuego."]),
+    { "spell damage (Fuego)": 4 },
+  );
+  assert.deepEqual(
+    views.simpleStats([
+      "Equip: Increases healing done by up to 33 and damage done by up to 11 for all magical spells and effects.",
+      "Equip: Increases damage done by Fire spells and effects by up to 4.",
+    ]),
+    { healing: 33, "spell damage": 11, "spell damage (Fire)": 4 },
+  );
+});
+
 test("auction filters and groups", () => {
   const a = {
     browse: [

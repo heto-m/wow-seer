@@ -136,13 +136,30 @@ export function itemView(item: any, keys: string[] = ["slot", "id", "name", "qua
   return out;
 }
 
+const DPS = /^\((\p{Nd}+(?:[.,]\p{Nd}+)?) [^()]+\)$/u;
+const SPELL_POWER: Array<[RegExp, (m: RegExpExecArray) => Record<string, number>]> = [
+  [/hasta (\d+) p\. el daño infligido y la sanación realizada/, (m) => ({ "spell damage": +m[1], healing: +m[1] })],
+  [/hasta (\d+) p\. la sanación realizada/, (m) => ({ healing: +m[1] })],
+  [/hasta (\d+) p\. el daño infligido con hechizos y efectos de (\p{L}+)/u, (m) => ({ [`spell damage (${m[2]})`]: +m[1] })],
+  [/hasta (\d+) p\. el daño infligido con (?:todos los )?hechizos y efectos(?! de)/, (m) => ({ "spell damage": +m[1] })],
+  [/damage and healing done by magical spells and effects by up to (\d+)/i, (m) => ({ "spell damage": +m[1], healing: +m[1] })],
+  [/healing done by (?:spells and effects by )?up to (\d+)/i, (m) => ({ healing: +m[1] })],
+  [/damage done by up to (\d+) for all magical/i, (m) => ({ "spell damage": +m[1] })],
+  [/damage done by (\p{L}+) spells and effects by up to (\d+)/iu, (m) => ({ [`spell damage (${m[1]})`]: +m[2] })],
+];
+
 export function simpleStats(lines: string[]): Record<string, number> {
   const stats: Record<string, number> = {};
-  for (const line of lines) {
-    const m = SIMPLE_STAT.exec(line.trim());
-    if (m) {
-      const key = m[2].trim();
-      stats[key] = (stats[key] ?? 0) + parseInt(m[1], 10);
+  const add = (key: string, n: number) => (stats[key] = (stats[key] ?? 0) + n);
+  for (const raw of lines) {
+    const line = raw.trim();
+    const m = SIMPLE_STAT.exec(line);
+    if (m) add(m[2].trim(), parseInt(m[1], 10));
+    const dps = DPS.exec(line);
+    if (dps) add("dps", parseFloat(dps[1].replace(",", ".")));
+    for (const [re, read] of SPELL_POWER) {
+      const sp = re.exec(line);
+      if (sp) for (const [k, n] of Object.entries(read(sp))) add(k, n);
     }
   }
   return stats;
@@ -153,7 +170,8 @@ export function statDiff(newLines: string[], oldLines: string[]): Record<string,
   const b = simpleStats(oldLines);
   const out: Record<string, number> = {};
   for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
-    if ((a[k] ?? 0) !== (b[k] ?? 0)) out[k] = (a[k] ?? 0) - (b[k] ?? 0);
+    const d = Math.round(((a[k] ?? 0) - (b[k] ?? 0)) * 10) / 10;
+    if (d !== 0) out[k] = d;
   }
   return out;
 }
