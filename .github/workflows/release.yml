@@ -50,7 +50,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # No CF_API_TOKEN here: the packager can't put spaces in the CurseForge file name, so the next step uploads.
       - uses: BigWigsMods/packager@01e8631a69c69d7654c788d152630d5fed9e3812 # v2.7.0
         env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to CurseForge
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          toc=addon/Seer/Seer.toc
+          project=$(sed -n 's/^## X-Curse-Project-ID:[[:space:]]*//p' "$toc" | tr -d '\r')
+          interface=$(sed -n 's/^## Interface:[[:space:]]*//p' "$toc" | tr -d '\r')
+          game_version="$((interface / 10000)).$((interface / 100 % 100)).$((interface % 100))"
+          version_id=$(curl -sSf -H "x-api-token: $CF_API_TOKEN" https://wow.curseforge.com/api/game/versions |
+            jq --arg v "$game_version" '[.[] | select(.gameVersionTypeID == 88568 and .name == $v) | .id][0]')
+          [ "$version_id" != null ] || { echo "::error::CurseForge has no Forever version $game_version"; exit 1; }
+          jq -n --arg name "Seer ${GITHUB_REF_NAME#v}" --argjson gv "$version_id" \
+            --arg log "https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" \
+            '{displayName: $name, gameVersions: [$gv], releaseType: "release", changelog: $log, changelogType: "text"}' > metadata.json
+          curl -sSf --retry 3 -H "x-api-token: $CF_API_TOKEN" \
+            -F "metadata=<metadata.json" -F "file=@$(ls .release/*.zip)" \
+            "https://wow.curseforge.com/api/projects/$project/upload-file"
