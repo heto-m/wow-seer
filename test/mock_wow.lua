@@ -93,6 +93,7 @@ function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 UIParent = CreateFrame()
 WorldFrame = CreateFrame()
 SlashCmdList = {}
+StaticPopupDialogs = {}
 C_TooltipInfo = {
 	GetInventoryItem = function() return { lines = { { leftText = "Capucha azul" }, { leftText = "Cabeza", rightText = "Tela" }, { leftText = "|cff00ff00+5 Intelecto|r" } } } end,
 	GetBagItem = function()

@@ -46,7 +46,6 @@ local function UsePng()
 	Say(L.PNG_NOW)
 end
 
-StaticPopupDialogs = StaticPopupDialogs or {}
 StaticPopupDialogs.SEER_PNG = {
 	text = L.PNG_POPUP,
 	button1 = L.PNG_USE,
@@ -270,7 +269,7 @@ local function OnAuction(event, arg)
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event, arg1)
+events:SetScript("OnEvent", function(_, event, arg1, arg2)
 	local ok, err = pcall(function()
 		if event == "ADDON_LOADED" then
 			if arg1 ~= ADDON then return end
@@ -303,7 +302,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
 		elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
 			if arg1 == ADDON and not warned.blocked then
 				warned.blocked = true
-				Say(L.BLOCKED, event)
+				Say(L.BLOCKED, event .. " " .. tostring(arg2))
 			end
 		elseif OPEN[event] then
 			local o = OPEN[event]
