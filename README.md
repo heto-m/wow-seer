@@ -15,7 +15,7 @@ npx -y wow-seer install                           # with the game closed
 claude mcp add wow-seer -- npx -y wow-seer serve  # or run `npx -y wow-seer serve` as a stdio server in any client
 ```
 
-Set `WOW_DIR` if your `_forever_` folder isn't in a default place. In game, `/seer` shows the status.
+Set `WOW_DIR` if your `_forever_` folder isn't in a default place. Seer needs screenshots saved as PNG and asks to switch if they are not (`/seer png` does it too). In game, `/seer` shows the status.
 
 ## Tools
 

@@ -64,6 +64,10 @@ function GetTime() return now end
 GetTimePreciseSec = GetTime
 function debugprofilestop() return now * 1000 end
 function InCombatLockdown() return false end
+local cvars = { screenshotFormat = os.getenv("MOCK_FORMAT") or "png" }
+function GetCVar(name) return cvars[name] end
+function SetCVar(name, value) cvars[name] = value end
+function StaticPopup_Show(name, arg) print("popup " .. name .. " " .. tostring(arg)) end
 function GetPhysicalScreenSize() return 1100, 700 end
 function GetBuildInfo() return "1.60.1", "70938", "Nov 12 2026", 16001 end
 function GetLocale() return "esES" end
@@ -154,6 +158,8 @@ end
 Fire("ADDON_LOADED", "Seer")
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD")
+
+if os.getenv("MOCK_SEND") then C_Timer.After(10, function() SlashCmdList.SEER("send") end) end
 
 local stop = now + SECONDS
 while now < stop do

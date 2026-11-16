@@ -29,6 +29,40 @@ local function Alive()
 	return serverSeen ~= nil and GetTime() - serverSeen < ALIVE_FOR
 end
 
+local GetCVarValue = C_CVar and C_CVar.GetCVar or GetCVar
+local SetCVarValue = C_CVar and C_CVar.SetCVar or SetCVar
+
+local function ScreenshotFormat()
+	return GetCVarValue and GetCVarValue("screenshotFormat") or "png"
+end
+
+local function UsePng()
+	SetCVarValue("screenshotFormat", "png")
+	Say("Screenshots are now saved as PNG.")
+end
+
+StaticPopupDialogs = StaticPopupDialogs or {}
+StaticPopupDialogs.SEER_PNG = {
+	text = "Seer sends your game state to the AI through PNG screenshots, but yours are saved as %s.\n\nSave screenshots as PNG?",
+	button1 = "Use PNG",
+	button2 = "Not now",
+	OnAccept = UsePng,
+	OnCancel = function() Say("Nothing is sent until screenshots are PNG. Type /seer png to switch.") end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+}
+
+local function PngReady()
+	local format = ScreenshotFormat()
+	if format == "png" then return true end
+	if not warned.png then
+		warned.png = true
+		StaticPopup_Show("SEER_PNG", format)
+	end
+	return false
+end
+
 local function Mark(section)
 	if not dirty[section] then dirty[section] = GetTime() end
 end
@@ -120,6 +154,7 @@ local function Push(force)
 	local now = GetTime()
 	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
 	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
+	if not PngReady() then return end
 	local list = Ready(now)
 	if #list == 0 and not dirty.acks then return end
 	local sections = {}
@@ -309,6 +344,9 @@ end
 local function Status()
 	Say(string.format("server %s, slots %d of %d used, %s.",
 		Alive() and "connected" or "not seen", nextSlot - 1, slotCount, db.paused and "paused" or "sending changes"))
+	if ScreenshotFormat() ~= "png" then
+		Say("screenshots are saved as " .. ScreenshotFormat() .. ", so nothing is sent. Type /seer png to switch.")
+	end
 	if ns.lastSent then
 		Say(string.format("last sent %d bytes %.0f s ago: %s", ns.lastSent.bytes, GetTime() - ns.lastSent.at,
 			table.concat(ns.lastSent.sections, ", ")))
@@ -325,6 +363,8 @@ SlashCmdList.SEER = function(msg)
 			MarkAll()
 			for s in pairs(dirty) do dirty[s] = -1000 end
 			Push(true)
+		elseif cmd == "png" then
+			UsePng()
 		elseif cmd == "debug" then
 			ns.debug = not ns.debug
 			db.debug = ns.debug
@@ -346,7 +386,7 @@ SlashCmdList.SEER = function(msg)
 			Say("Cell size " .. ns.Strip.cell .. " px.")
 		else
 			Status()
-			Say("/seer status | test | send | pause | resume | cell <1-4>")
+			Say("/seer status | test | send | png | pause | resume | cell <1-4>")
 		end
 	end)
 	if not ok then Say("|cffff4040error|r " .. tostring(err)) end
