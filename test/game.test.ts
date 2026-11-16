@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as game from "../src/game.js";
+import { compareVersions, VERSION } from "../src/version.js";
 
 function withWowDir<T>(dir: string, fn: () => T): T {
   const old = process.env.WOW_DIR;
@@ -58,6 +59,42 @@ test("install, writeSlots and remove", () => {
       assert.deepEqual(game.slotDirs(), ["Seer_S0001", "Seer_S0002"]);
       game.remove();
       assert.deepEqual(fs.readdirSync(game.addonsDir()), []);
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("the bundled addon's version matches the package", () => {
+  assert.equal(game.tocVersion(path.join(game.ADDON_SRC, "Seer.toc")), VERSION);
+  assert.equal(compareVersions("0.10.0", "0.9.9"), 1);
+  assert.equal(compareVersions("1.0", "1.0.0"), 0);
+  assert.equal(compareVersions("1.2.0-beta", "1.0.0"), null);
+});
+
+test("install keeps a newer Seer and replaces an older one", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seer-"));
+  try {
+    const wow = path.join(tmp, "_forever_");
+    const seer = path.join(wow, "Interface", "AddOns", "Seer");
+    const toc = path.join(seer, "Seer.toc");
+    fs.mkdirSync(seer, { recursive: true });
+    withWowDir(wow, () => {
+      fs.writeFileSync(toc, "## Title: Seer\n## Version: 99.0.0\n");
+      fs.writeFileSync(path.join(seer, "Extra.lua"), "");
+      assert.equal(game.install(2).kept, "99.0.0");
+      assert.equal(game.tocVersion(toc), "99.0.0");
+      assert.ok(fs.existsSync(path.join(seer, "Extra.lua")));
+      assert.deepEqual(game.slotDirs(), ["Seer_S0001", "Seer_S0002"]);
+
+      fs.writeFileSync(toc, "## Title: Seer\n## Version: 0.0.1\n");
+      assert.equal(game.install(2).kept, null);
+      assert.equal(game.tocVersion(toc), VERSION);
+      assert.ok(!fs.existsSync(path.join(seer, "Extra.lua")));
+
+      fs.writeFileSync(toc, "## Version: @project-version@\n");
+      assert.equal(game.install(2).kept, null);
+      assert.equal(game.tocVersion(toc), VERSION);
     });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

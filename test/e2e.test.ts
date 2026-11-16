@@ -89,6 +89,8 @@ test("the real server reads the mock game end to end", { skip: !LUA && "needs lu
     const status = await client.tool("seer_status");
     assert.equal(status.role, "leader");
     assert.equal(status.last_error, null);
+    assert.equal(status.addon_version, status.server_version);
+    assert.equal(status.warning, undefined);
     await until(() => fs.readdirSync(path.join(wow, "Screenshots")).length === 0, 5);
   } finally {
     child.kill();
