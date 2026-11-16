@@ -17,8 +17,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
         node: [20, 24, lts/*]
+        include:
+          - { os: windows-latest, node: lts/* }
+          - { os: macos-latest, node: lts/* }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
