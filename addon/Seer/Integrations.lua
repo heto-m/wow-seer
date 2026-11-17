@@ -3,6 +3,7 @@ local _, ns = ...
 local collect = ns.collect
 local MAX_OBJECTIVES = 4
 local MAX_DROPPERS = 5
+local MAX_SCALES = 3
 local TRAINING_AHEAD = 5
 local WANTED_TRAINING = {
 	available = true, nextLevel = true, missingReqs = true, notLevel = true, missingTalent = true,
@@ -33,8 +34,9 @@ end
 function ns.PlayerPosition()
 	local map = Try(C_Map.GetBestMapForUnit, "player")
 	local pos = map and Try(C_Map.GetPlayerMapPosition, map, "player")
-	local x, y = pos and Try(pos.GetXY, pos)
-	if not x then return nil end
+	if not pos then return nil end
+	local x, y = Try(pos.GetXY, pos)
+	if not (x and y) then return nil end
 	return { map = map, mapName = MapName(map), x = Round(x * 100), y = Round(y * 100) }
 end
 
@@ -129,12 +131,16 @@ end
 function ns.PawnInfo(link)
 	if not (PawnIsReady and Try(PawnIsReady)) or type(link) ~= "string" then return nil end
 	local item = Try(PawnGetItemData, link)
-	local first = item and item.Values and item.Values[1]
-	if not first then return nil end
-	local out = { scale = first[4] or first[1], value = Round(first[2]) }
-	local upgrades = Try(PawnIsItemAnUpgrade, item)
-	local best = type(upgrades) == "table" and upgrades[1]
-	if best and best.PercentUpgrade then out.upgrade = math.floor(best.PercentUpgrade * 100 + 0.5) end
+	if not (item and item.Values and item.Values[1]) then return nil end
+	local upgrades = {}
+	for _, u in ipairs(Try(PawnIsItemAnUpgrade, item) or {}) do
+		if u.ScaleName and u.PercentUpgrade then upgrades[u.ScaleName] = math.floor(u.PercentUpgrade * 100 + 0.5) end
+	end
+	local out = {}
+	for i, v in ipairs(item.Values) do
+		if i > MAX_SCALES then break end
+		out[#out + 1] = { scale = v[4] or v[1], value = Round(v[2]), upgrade = upgrades[v[1]] }
+	end
 	return out
 end
 
@@ -145,8 +151,10 @@ local function LivePoint(t)
 	local compat = Polestar and Polestar.Compat
 	if t.f == "e" and compat then
 		local cont, wx, wy = Try(compat.MapToWorld, t.map, x, y, "e")
-		local lx, ly = cont and Try(compat.WorldToMap, cont, wx, wy, t.map)
-		if lx then x, y = lx, ly end
+		if cont then
+			local lx, ly = Try(compat.WorldToMap, cont, wx, wy, t.map)
+			if lx and ly then x, y = lx, ly end
+		end
 	end
 	return { map = t.map, mapName = MapName(t.map), x = Round(x), y = Round(y) }
 end
@@ -178,35 +186,37 @@ function collect.guide()
 	return out
 end
 
+-- Forever blocks the combat log; its built-in damage meter (what Details shows there) has the fight.
+local METERS = { damage = "DamageDone", healing = "HealingDone", taken = "DamageTaken" }
+
 function collect.fight()
-	local combat = Details and Try(Details.GetCombat, Details, 1)
-	if not combat then return nil end
-	local out = {
-		name = Try(combat.GetCombatName, combat), seconds = Round(Try(combat.GetCombatTime, combat)),
-		players = {}, deaths = {},
-	}
-	local byName = {}
-	for attr, key in pairs({ [1] = "damage", [2] = "healing" }) do
-		local container = Try(combat.GetContainer, combat, attr)
-		if container then
-			for _, actor in container:ListActors() do
-				if Try(actor.IsGroupPlayer, actor) then
-					local name = Try(actor.name, actor)
+	local dm, types = C_DamageMeter, Enum and Enum.DamageMeterType
+	local current = Enum and Enum.DamageMeterSessionType and Enum.DamageMeterSessionType.Current
+	if not (dm and types and current) then return nil end
+	local out, byName = { players = {}, deaths = {} }, {}
+	for key, meter in pairs(METERS) do
+		local session = types[meter] and Try(dm.GetCombatSessionFromType, current, types[meter])
+		if type(session) == "table" then
+			out.seconds = out.seconds or Round(session.durationSeconds)
+			for _, src in ipairs(session.combatSources or {}) do
+				local name = src.name
+				if type(name) == "string" and not (issecretvalue and issecretvalue(name)) then
 					local p = byName[name]
 					if not p then
-						p = { name = name }
+						p = { name = name, me = src.isLocalPlayer or nil }
 						byName[name] = p
 						out.players[#out.players + 1] = p
 					end
-					p[key] = math.floor(actor.total or 0)
-					if attr == 2 then p.overheal = math.floor(actor.totalover or 0) end
+					p[key] = math.floor(src.totalAmount or 0)
 				end
 			end
 		end
 	end
-	for _, d in ipairs(Try(combat.GetDeaths, combat) or {}) do
-		if type(d) == "table" and type(d[3]) == "string" then out.deaths[#out.deaths + 1] = d[3] end
+	local deaths = types.Deaths and Try(dm.GetCombatSessionFromType, current, types.Deaths)
+	for _, src in ipairs(type(deaths) == "table" and deaths.combatSources or {}) do
+		if type(src.name) == "string" then out.deaths[#out.deaths + 1] = src.name end
 	end
+	if not out.seconds and not out.players[1] then return nil end
 	return out
 end
 
@@ -228,10 +238,6 @@ function ns.HookAddons(mark)
 		for _, msg in ipairs({ "STEP_CHANGED", "STEP_UPDATED", "GUIDE_CHANGED", "WAYPOINT_CHANGED" }) do
 			pcall(Polestar.On, msg, function() mark("guide") end)
 		end
-	end
-	if Details and Details.CreateEventListener then
-		local listener = Try(Details.CreateEventListener, Details)
-		if listener then pcall(listener.RegisterEvent, listener, "COMBAT_PLAYER_LEAVE", function() mark("fight") end) end
 	end
 	if WT_API and WT_API.RegisterCallback then
 		for _, event in ipairs({ "Ready", "SpellsChanged", "LevelChanged" }) do

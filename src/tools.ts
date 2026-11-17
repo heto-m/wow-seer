@@ -18,7 +18,7 @@ export const SECTION_HELP: Record<string, string> = {
   items: "tooltips fetched with get_item",
   prices: "Auctionator and vendor prices fetched with get_prices",
   guide: "the Polestar guide step (needs the Polestar addon)",
-  fight: "the last fight recorded by the Details addon",
+  fight: "the last fight from the game's damage meter",
   training: "spells to learn, from the What's Training addon",
 };
 
@@ -89,7 +89,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_bags",
-    description: "Bag (or bank) contents, stacks merged, free space.",
+    description: "Bag (or bank) contents, stacks merged, free space. With the Pawn addon, gear also shows Pawn's value and upgrade % under the player's active Pawn scale (Pawn ignores set bonuses).",
     inputSchema: schema({
       where: { type: "string", enum: ["bags", "bank", "both"] },
       name: { ...STR, description: "part of the item name" },
@@ -156,7 +156,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_last_fight",
-    description: "The last fight recorded by the Details addon: damage, healing and overheal per group member, deaths.",
+    description: "The last fight from the game's built-in damage meter (what Details shows on Forever): damage, healing and damage taken per group member, with per-second rates, and deaths.",
     inputSchema: schema(),
     sections: ["fight"],
     view: (d) => views.fight(d.fight),

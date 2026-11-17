@@ -241,6 +241,7 @@ local EVENTS = {
 	PLAYER_LEVEL_UP = { "player", "talents" },
 	ZONE_CHANGED_NEW_AREA = { "player" },
 	ZONE_CHANGED = { "player" },
+	PLAYER_REGEN_ENABLED = { "fight" },
 	ZONE_CHANGED_INDOORS = { "player" },
 	QUEST_LOG_UPDATE = { "quests" },
 	CHARACTER_POINTS_CHANGED = { "talents" },

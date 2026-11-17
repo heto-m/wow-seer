@@ -116,9 +116,12 @@ export function tidyTooltip(lines: any, name: any = null): { lines: string[]; se
 }
 
 export function pawnText(p: any): string | null {
-  if (!truthy(p) || get(p, "value") === null) return null;
-  const upgrade = get(p, "upgrade");
-  return `${pyStr(get(p, "scale"))} ${pyStr(get(p, "value"))}` + (upgrade ? `, +${upgrade}% upgrade` : "");
+  const scales = (Array.isArray(p) ? p : truthy(p) ? [p] : []).filter((x) => get(x, "value") !== null);
+  if (!scales.length) return null;
+  return scales.map((x) => {
+    const upgrade = get(x, "upgrade");
+    return `${pyStr(get(x, "scale"))} ${pyStr(get(x, "value"))}` + (upgrade ? `, +${upgrade}% upgrade` : "");
+  }).join("; ");
 }
 
 export function itemView(item: any, keys: string[] = ["slot", "id", "name", "quality"],
@@ -541,10 +544,10 @@ export function fight(f: any): any {
   const secs = or(get(f, "seconds"), 0);
   const per = (v: any) => (secs > 0 && typeof v === "number" ? Math.round((v / secs) * 10) / 10 : null);
   const rows = (or(get(f, "players"), []) as any[])
-    .map((p) => ({ ...p, dps: per(get(p, "damage")), hps: per(get(p, "healing")) }))
+    .map((p) => ({ ...p, me: get(p, "me") ? true : null, dps: per(get(p, "damage")), hps: per(get(p, "healing")) }))
     .sort((a, b) => (or(b.damage, 0) + or(b.healing, 0)) - (or(a.damage, 0) + or(a.healing, 0)));
-  const out: any = { fight: get(f, "name"), seconds: secs,
-    players: table(rows, ["name", "damage", "dps", "healing", "hps", "overheal"]) };
+  const out: any = { seconds: secs,
+    players: table(rows, ["name", "me", "damage", "dps", "healing", "hps", "taken"]) };
   if (truthy(get(f, "deaths"))) out.deaths = f.deaths;
   return out;
 }
