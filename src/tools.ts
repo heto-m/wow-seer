@@ -17,6 +17,9 @@ export const SECTION_HELP: Record<string, string> = {
   auction: "last auction house browse/search results",
   items: "tooltips fetched with get_item",
   prices: "Auctionator and vendor prices fetched with get_prices",
+  guide: "the Polestar guide step (needs the Polestar addon)",
+  fight: "the last fight recorded by the Details addon",
+  training: "spells to learn, from the What's Training addon",
 };
 
 export const INSTRUCTIONS =
@@ -57,7 +60,7 @@ function bagSections(args: Args): string[] {
 const TOOLS: SectionTool[] = [
   {
     name: "get_character",
-    description: "Level, class, money, xp, zone, stats, equipped gear, talents taken, profession levels.",
+    description: "Level, class, money, xp, zone and map position (x, y from 0 to 100), stats, equipped gear, talents taken, profession levels.",
     inputSchema: schema({ detail: { ...DETAIL, description: "summary (default): gear names only; full: gear tooltips" } }),
     sections: ["player", "equipment", "talents", "skills"],
     view: (d, a) => ({
@@ -105,7 +108,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_quests",
-    description: "Quest log grouped by zone, with objective progress.",
+    description: "Quest log grouped by zone, with objective progress. With Questie installed, each quest also has where to turn it in and where its objectives are (zone, x, y from 0 to 100).",
     inputSchema: schema({ zone: { ...STR, description: "part of the zone or quest title" }, unfinished_only: BOOL }),
     sections: ["quests"],
     view: (d, a) => views.quests(d.quests, a.zone, Boolean(a.unfinished_only)),
@@ -145,6 +148,27 @@ const TOOLS: SectionTool[] = [
     view: (d, a) => views.profession(d.profession, a.name, Boolean(a.craftable_only)),
   },
   {
+    name: "get_guide",
+    description: "The step the player's Polestar leveling guide is on: what to do, quests, NPCs and map coordinates.",
+    inputSchema: schema(),
+    sections: ["guide"],
+    view: (d) => views.guide(d.guide),
+  },
+  {
+    name: "get_last_fight",
+    description: "The last fight recorded by the Details addon: damage, healing and overheal per group member, deaths.",
+    inputSchema: schema(),
+    sections: ["fight"],
+    view: (d) => views.fight(d.fight),
+  },
+  {
+    name: "get_training",
+    description: "Class spells to learn now and in the next levels, with trainer cost (from the What's Training addon).",
+    inputSchema: schema({ available_only: BOOL }),
+    sections: ["training"],
+    view: (d, a) => views.training(d.training, Boolean(a.available_only)),
+  },
+  {
     name: "get_merchant",
     description: "The last vendor window the player opened: items and prices.",
     inputSchema: schema({ name: STR, usable_only: BOOL }),
@@ -168,7 +192,7 @@ const EXTRA_TOOLS = [
     name: "get_prices",
     description:
       "Auction prices from the player's Auctionator addon (lowest buyout it last saw, and how many days ago) " +
-      "plus the vendor sell price, for item IDs and/or everything in the bags. Works with the auction house closed. " +
+      "plus the vendor sell price and, for gear, Auctionator's disenchant value, for item IDs and/or everything in the bags. Works with the auction house closed. " +
       "Random-suffix gear is priced per exact item when it comes from the bags.",
     inputSchema: schema({
       item_ids: { type: "array", items: INT, description: "up to 200" },

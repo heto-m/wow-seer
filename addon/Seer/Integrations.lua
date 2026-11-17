@@ -1,0 +1,249 @@
+local _, ns = ...
+
+local collect = ns.collect
+local MAX_OBJECTIVES = 4
+local MAX_DROPPERS = 5
+local TRAINING_AHEAD = 5
+local WANTED_TRAINING = {
+	available = true, nextLevel = true, missingReqs = true, notLevel = true, missingTalent = true,
+	weaponAvailable = true, weaponNextLevel = true,
+}
+
+local function Try(fn, ...)
+	if not fn then return nil end
+	local ok, a, b, c, d, e = pcall(fn, ...)
+	if ok then return a, b, c, d, e end
+end
+
+local function Clean(text)
+	if type(text) ~= "string" then return nil end
+	text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("|A.-|a", "")
+	return text ~= "" and text or nil
+end
+
+local function Round(v)
+	return type(v) == "number" and math.floor(v * 10 + 0.5) / 10 or nil
+end
+
+local function MapName(map)
+	local info = map and Try(C_Map.GetMapInfo, map)
+	return info and info.name
+end
+
+function ns.PlayerPosition()
+	local map = Try(C_Map.GetBestMapForUnit, "player")
+	local pos = map and Try(C_Map.GetPlayerMapPosition, map, "player")
+	local x, y = pos and Try(pos.GetXY, pos)
+	if not x then return nil end
+	return { map = map, mapName = MapName(map), x = Round(x * 100), y = Round(y * 100) }
+end
+
+local function QuestieReady()
+	return LibQuestieDB and Questie and Questie.API and Questie.API.isReady
+end
+
+local function UiMap(areaId)
+	local zones = QuestieLoader and Try(QuestieLoader.ImportModule, QuestieLoader, "ZoneDB")
+	return zones and Try(zones.GetUiMapIdByAreaId, zones, areaId)
+end
+
+-- Spawn lists are keyed by area; the busiest area wins and its spots are averaged into one point.
+local function Place(spawnLists)
+	local best, bestArea
+	for _, spawns in ipairs(spawnLists) do
+		for area, points in pairs(spawns or {}) do
+			if type(points) == "table" and (not best or #points > #best) then best, bestArea = points, area end
+		end
+	end
+	if not best then return nil end
+	local map = UiMap(bestArea)
+	local place = { zone = MapName(map) or Try(C_Map.GetAreaInfo, bestArea), map = map, spots = #best }
+	local sx, sy, n = 0, 0, 0
+	for _, p in ipairs(best) do
+		if type(p[1]) == "number" and p[1] >= 0 then sx, sy, n = sx + p[1], sy + p[2], n + 1 end
+	end
+	if n > 0 then place.x, place.y = Round(sx / n), Round(sy / n) end
+	return place
+end
+
+local function NpcPlace(id)
+	local place = Place({ LibQuestieDB.Npc.spawns(id) })
+	if place then place.name = LibQuestieDB.Npc.name(id) end
+	return place
+end
+
+local function ObjectPlace(id)
+	local place = Place({ LibQuestieDB.Object.spawns(id) })
+	if place then place.name, place.object = LibQuestieDB.Object.name(id), true end
+	return place
+end
+
+local function ItemPlace(id)
+	local spawns, droppers = {}, {}
+	for i, npc in ipairs(Try(LibQuestieDB.Item.npcDrops, id) or {}) do
+		if i > MAX_DROPPERS then break end
+		spawns[#spawns + 1] = Try(LibQuestieDB.Npc.spawns, npc)
+		droppers[#droppers + 1] = Try(LibQuestieDB.Npc.name, npc)
+	end
+	for i, obj in ipairs(Try(LibQuestieDB.Item.objectDrops, id) or {}) do
+		if i > MAX_DROPPERS then break end
+		spawns[#spawns + 1] = Try(LibQuestieDB.Object.spawns, obj)
+		droppers[#droppers + 1] = Try(LibQuestieDB.Object.name, obj)
+	end
+	local place = Place(spawns)
+	if place then
+		place.name = Try(LibQuestieDB.Item.name, id)
+		place.from = droppers
+	end
+	return place
+end
+
+local function Finisher(questId)
+	local by = Try(LibQuestieDB.Quest.finishedBy, questId)
+	if type(by) ~= "table" then return nil end
+	if by[1] and by[1][1] then return Try(NpcPlace, by[1][1]) end
+	if by[2] and by[2][1] then return Try(ObjectPlace, by[2][1]) end
+end
+
+local function ObjectivePlaces(questId)
+	local o = Try(LibQuestieDB.Quest.objectives, questId)
+	if type(o) ~= "table" then return nil end
+	local out = {}
+	local function Add(fn, id)
+		if #out >= MAX_OBJECTIVES then return end
+		local place = Try(fn, id)
+		if place then out[#out + 1] = place end
+	end
+	for _, m in ipairs(o[1] or {}) do Add(NpcPlace, m[1]) end
+	for _, m in ipairs(o[2] or {}) do Add(ObjectPlace, m[1]) end
+	for _, m in ipairs(o[3] or {}) do Add(ItemPlace, m[1]) end
+	return out[1] and out or nil
+end
+
+function ns.QuestPlaces(entry)
+	if not QuestieReady() or not entry.id then return end
+	entry.finish = Finisher(entry.id)
+	if not entry.complete then entry.where = ObjectivePlaces(entry.id) end
+end
+
+function ns.PawnInfo(link)
+	if not (PawnIsReady and Try(PawnIsReady)) or type(link) ~= "string" then return nil end
+	local item = Try(PawnGetItemData, link)
+	local first = item and item.Values and item.Values[1]
+	if not first then return nil end
+	local out = { scale = first[4] or first[1], value = Round(first[2]) }
+	local upgrades = Try(PawnIsItemAnUpgrade, item)
+	local best = type(upgrades) == "table" and upgrades[1]
+	if best and best.PercentUpgrade then out.upgrade = math.floor(best.PercentUpgrade * 100 + 0.5) end
+	return out
+end
+
+-- Polestar keeps Era-frame points (f == "e"); its own converter gives the live map position.
+local function LivePoint(t)
+	if type(t) ~= "table" or not t.map or not t.x then return nil end
+	local x, y = t.x, t.y
+	local compat = Polestar and Polestar.Compat
+	if t.f == "e" and compat then
+		local cont, wx, wy = Try(compat.MapToWorld, t.map, x, y, "e")
+		local lx, ly = cont and Try(compat.WorldToMap, cont, wx, wy, t.map)
+		if lx then x, y = lx, ly end
+	end
+	return { map = t.map, mapName = MapName(t.map), x = Round(x), y = Round(y) }
+end
+
+function collect.guide()
+	local engine = Polestar and Polestar.Engine
+	if not engine then return nil end
+	local index = Try(engine.GetStepIndex)
+	local view = index and Try(engine.GetStepView, index)
+	if type(view) ~= "table" then return nil end
+	local guide = Try(engine.GetGuide)
+	local out = {
+		guide = guide and guide.id, step = index, steps = Try(engine.GetStepCount),
+		title = Clean(view.title), note = Clean(view.note), goals = {},
+	}
+	for _, g in ipairs(view.goals or {}) do
+		local p = g.progress
+		out.goals[#out.goals + 1] = {
+			kind = g.t, text = Clean(g.text), status = g.status, quest = g.quest, npc = Clean(g.npcName),
+			optional = g.optional or nil, progress = p and p.max and (tostring(p.cur or 0) .. "/" .. tostring(p.max)) or nil,
+			at = LivePoint(g),
+		}
+	end
+	local wp = Try(engine.GetWaypoint)
+	if wp then
+		out.waypoint = LivePoint(wp)
+		if out.waypoint then out.waypoint.label = Clean(wp.label) end
+	end
+	return out
+end
+
+function collect.fight()
+	local combat = Details and Try(Details.GetCombat, Details, 1)
+	if not combat then return nil end
+	local out = {
+		name = Try(combat.GetCombatName, combat), seconds = Round(Try(combat.GetCombatTime, combat)),
+		players = {}, deaths = {},
+	}
+	local byName = {}
+	for attr, key in pairs({ [1] = "damage", [2] = "healing" }) do
+		local container = Try(combat.GetContainer, combat, attr)
+		if container then
+			for _, actor in container:ListActors() do
+				if Try(actor.IsGroupPlayer, actor) then
+					local name = Try(actor.name, actor)
+					local p = byName[name]
+					if not p then
+						p = { name = name }
+						byName[name] = p
+						out.players[#out.players + 1] = p
+					end
+					p[key] = math.floor(actor.total or 0)
+					if attr == 2 then p.overheal = math.floor(actor.totalover or 0) end
+				end
+			end
+		end
+	end
+	for _, d in ipairs(Try(combat.GetDeaths, combat) or {}) do
+		if type(d) == "table" and type(d[3]) == "string" then out.deaths[#out.deaths + 1] = d[3] end
+	end
+	return out
+end
+
+function collect.training()
+	if not (WT_API and Try(WT_API.IsReady)) then return nil end
+	local level = UnitLevel("player")
+	local out = {}
+	for _, s in ipairs(Try(WT_API.GetSpells) or {}) do
+		if WANTED_TRAINING[s.status] and (s.level or 0) <= level + TRAINING_AHEAD then
+			out[#out + 1] = { name = s.name, rank = s.subText, level = s.level, cost = s.cost, status = s.status }
+		end
+	end
+	table.sort(out, function(a, b) return (a.level or 0) < (b.level or 0) end)
+	return out
+end
+
+function ns.HookAddons(mark)
+	if Polestar and Polestar.On then
+		for _, msg in ipairs({ "STEP_CHANGED", "STEP_UPDATED", "GUIDE_CHANGED", "WAYPOINT_CHANGED" }) do
+			pcall(Polestar.On, msg, function() mark("guide") end)
+		end
+	end
+	if Details and Details.CreateEventListener then
+		local listener = Try(Details.CreateEventListener, Details)
+		if listener then pcall(listener.RegisterEvent, listener, "COMBAT_PLAYER_LEAVE", function() mark("fight") end) end
+	end
+	if WT_API and WT_API.RegisterCallback then
+		for _, event in ipairs({ "Ready", "SpellsChanged", "LevelChanged" }) do
+			pcall(WT_API.RegisterCallback, "Seer", event, function() mark("training") end)
+		end
+	end
+	if Questie and Questie.API and Questie.API.RegisterOnReady then
+		pcall(Questie.API.RegisterOnReady, function() mark("quests") end)
+	end
+	-- Pawn finishes loading its scales after login, so gear is valued on a second pass.
+	C_Timer.After(15, function()
+		mark("bags")
+		mark("equipment")
+	end)
+end

@@ -87,6 +87,7 @@ function collect.player()
 	p.stats.crit = Try(GetCritChance)
 	p.stats.spellCrit = Try(GetSpellCritChance, 2)
 	p.stats.dodge = Try(GetDodgeChance)
+	p.position = Try(ns.PlayerPosition)
 	return p
 end
 
@@ -133,6 +134,7 @@ local function Container(bags)
 				if Equippable(info.itemID) then
 					item.tooltip = TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetBagItem, bag, slot))
 					item.loc = EquipLoc(info.itemID)
+					item.pawn = ns.PawnInfo and Try(ns.PawnInfo, info.hyperlink)
 				end
 				entry.items[#entry.items + 1] = item
 			end
@@ -173,6 +175,7 @@ function collect.quests()
 					text = Clean(o.text), done = o.finished, have = o.numFulfilled, need = o.numRequired,
 				}
 			end
+			if ns.QuestPlaces then pcall(ns.QuestPlaces, entry) end
 			out[#out + 1] = entry
 		end
 	end
@@ -383,7 +386,11 @@ function collect.items()
 	local out = {}
 	for id in pairs(ns.wantedItems) do
 		local lines = TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetItemByID, id))
-		out[#out + 1] = { id = id, name = ItemName(id), tooltip = lines, loc = EquipLoc(id) }
+		local link = select(2, Try(C_Item.GetItemInfo, id))
+		out[#out + 1] = {
+			id = id, name = ItemName(id), tooltip = lines, loc = EquipLoc(id),
+			pawn = ns.PawnInfo and Try(ns.PawnInfo, link),
+		}
 	end
 	return out
 end
@@ -417,7 +424,13 @@ function collect.prices()
 		end
 		if #items >= MAX_PRICED then return end
 		local entry = { id = id, name = ItemName(id, link), count = count, vendor = VendorPrice(id) }
-		if api then entry.price, entry.age = AuctionatorPrice(api, id, link) end
+		if api then
+			entry.price, entry.age = AuctionatorPrice(api, id, link)
+			if Equippable(id) then
+				entry.disenchant = link and Try(api.GetDisenchantPriceByItemLink, CALLER, link)
+					or Try(api.GetDisenchantPriceByItemID, CALLER, id)
+			end
+		end
 		seen[key] = entry
 		items[#items + 1] = entry
 	end
@@ -437,5 +450,5 @@ end
 
 ns.SECTIONS = {
 	"player", "equipment", "bags", "bank", "quests", "talents", "skills",
-	"trainer", "profession", "merchant", "auction", "items", "prices",
+	"trainer", "profession", "merchant", "auction", "items", "prices", "guide", "fight", "training",
 }

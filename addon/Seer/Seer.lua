@@ -5,7 +5,7 @@ local POLL_ALIVE, POLL_IDLE = 10, 60
 local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
-local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills" }
+local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
 
@@ -157,6 +157,17 @@ local function Ready(now)
 	return list
 end
 
+local COMPRESS_FROM = 200
+
+-- "Z" marks raw deflate for the server; JSON never starts with it.
+local function Compress(text)
+	local lib = ns.LibDeflate or (LibStub and LibStub("LibDeflate", true))
+	if not lib or #text < COMPRESS_FROM then return text end
+	local ok, packed = pcall(lib.CompressDeflate, lib, text, { level = 1 })
+	if ok and type(packed) == "string" and #packed + 1 < #text then return "Z" .. packed end
+	return text
+end
+
 local function Push(force)
 	local now = GetTime()
 	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
@@ -180,6 +191,7 @@ local function Push(force)
 		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
 		build = (GetBuildInfo()), version = VERSION, acks = sent, sections = sections,
 	})
+	text = Compress(text)
 	local started = GetTime()
 	for _, s in ipairs(list) do dirty[s] = nil end
 	dirty.acks = nil
@@ -228,6 +240,8 @@ local EVENTS = {
 	PLAYER_MONEY = { "player" },
 	PLAYER_LEVEL_UP = { "player", "talents" },
 	ZONE_CHANGED_NEW_AREA = { "player" },
+	ZONE_CHANGED = { "player" },
+	ZONE_CHANGED_INDOORS = { "player" },
 	QUEST_LOG_UPDATE = { "quests" },
 	CHARACTER_POINTS_CHANGED = { "talents" },
 	TRAIT_CONFIG_UPDATED = { "talents" },
@@ -305,6 +319,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
 		elseif event == "PLAYER_LOGIN" then
 			slotCount = CountSlots()
 			C_Timer.NewTicker(1, Tick)
+			pcall(ns.HookAddons, Mark)
 		elseif event == "PLAYER_ENTERING_WORLD" then
 			for _, s in ipairs(ALWAYS) do Mark(s) end
 			C_Timer.After(8, function() if not loading then worldReady = true end end)

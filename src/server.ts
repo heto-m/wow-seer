@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 
 import { Assembler, decode, NotSeer } from "./frame.js";
 import * as game from "./game.js";
@@ -8,6 +9,12 @@ import { LeaderLock, readJson, sharedDir, writeJson } from "./shared.js";
 import { versionWarning } from "./version.js";
 
 const SCAN_EVERY = 300;
+const DEFLATED = 0x5a;
+
+export function messageText(buf: Buffer): string {
+  return (buf[0] === DEFLATED ? zlib.inflateRawSync(buf.subarray(1)) : buf).toString("utf8");
+}
+
 const SYNC_EVERY = 500;
 const HEARTBEAT_EVERY = 30;
 const FAILS_BEFORE_BIGGER_CELLS = 2;
@@ -147,7 +154,7 @@ export function processFile(state: State, file: string): boolean | null {
   const text = state.assembler.add(header, payload);
   if (text !== null) {
     try {
-      state.apply(JSON.parse(text.toString("utf8")));
+      state.apply(JSON.parse(messageText(text)));
     } catch (e) {
       state.meta.last_error = `message ${header.msg}: ${(e as Error).message}`;
       log("bad message", state.meta.last_error);

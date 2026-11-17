@@ -99,7 +99,10 @@ C_TooltipInfo = {
 	GetBagItem = function()
 		local lines = { { leftText = "Varita" } }
 		if os.getenv("MOCK_BIG") then
-			for i = 1, 400 do lines[#lines + 1] = { leftText = "Linea larga de tooltip numero " .. i } end
+			math.randomseed(7)
+			for _ = 1, 400 do
+				lines[#lines + 1] = { leftText = string.format("%08x%08x%08x", math.random(0, 2 ^ 30), math.random(0, 2 ^ 30), math.random(0, 2 ^ 30)) }
+			end
 		end
 		return { lines = lines }
 	end,
