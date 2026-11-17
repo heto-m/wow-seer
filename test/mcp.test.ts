@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import { McpServer } from "../src/mcp.js";
 import { State } from "../src/server.js";
+import { VERSION } from "../src/version.js";
 
 const MODERN = {
   "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -153,5 +154,21 @@ test("missing data says why", async () => {
   } finally {
     delete process.env.WOW_DIR;
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test("the server tells an older addon about the update once", () => {
+  const write = process.stderr.write;
+  process.stderr.write = (() => true) as any;
+  try {
+    const state = new State();
+    state.apply({ msg: 1, t: Date.now() / 1000, version: "0.0.1" });
+    state.apply({ msg: 2, t: Date.now() / 1000, version: "0.0.1" });
+    assert.deepEqual(state.pending.filter((r: any) => r.kind === "update").map((r: any) => r.version), [VERSION]);
+    const same = new State();
+    same.apply({ msg: 1, t: Date.now() / 1000, version: VERSION });
+    assert.equal(same.pending.length, 0);
+  } finally {
+    process.stderr.write = write;
   }
 });

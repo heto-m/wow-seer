@@ -146,6 +146,16 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
     assert.deepEqual(h.alts.map((c: any) => [c.name, c.level, c.class, c.zone, c.mails ?? null, c.mailExpiresDays ?? null]), [
       ["Palla", 27, "PRIEST", "Tierras Altas", null, null], ["Bank", 5, "WARRIOR", "Entrañas", 2, 3.2],
     ]);
+    const comms = spawnSync(LUA!, [path.join(ROOT, "test", "mock_wow.lua"), game.addonsDir(), tmp, "20"], {
+      encoding: "utf8",
+      env: { ...process.env, MOCK_COMMS: "1" },
+    });
+    assert.equal(comms.status, 0, comms.stderr);
+    const updates = comms.stdout.split("\n").filter((l) => l.includes("npx -y wow-seer install") && /\d+\.\d+\.\d+/.test(l));
+    assert.equal(updates.length, 1, comms.stdout);
+    assert.match(updates[0], /0\.9\.0/);
+    const version = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
+    assert.deepEqual(comms.stdout.split("\n").filter((l) => l.startsWith("sent ")), [`sent Seer v:${version} GUILD`, `sent Seer v:${version} PARTY`]);
     const jpeg = run("jpeg");
     assert.match(jpeg, /popup SEER_PNG jpeg/);
     assert.match(jpeg, /shots 0/);
