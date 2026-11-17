@@ -388,7 +388,54 @@ function collect.items()
 	return out
 end
 
+local MAX_PRICED = 200
+local CALLER = "Seer"
+
+local function VendorPrice(id)
+	local ok, price = pcall(function() return select(11, C_Item.GetItemInfo(id)) end)
+	return ok and price or nil
+end
+
+local function AuctionatorPrice(api, id, link)
+	if link then
+		local price = Try(api.GetAuctionPriceByItemLink, CALLER, link)
+		if price then return price, Try(api.GetAuctionAgeByItemLink, CALLER, link) end
+	end
+	return Try(api.GetAuctionPriceByItemID, CALLER, id), Try(api.GetAuctionAgeByItemID, CALLER, id)
+end
+
+function collect.prices()
+	local want = ns.wantedPrices
+	if not want then return nil end
+	local api = Auctionator and Auctionator.API and Auctionator.API.v1
+	local items, seen = {}, {}
+	local function Add(id, link, count)
+		local key = link and link:match("item:[%-%d:]+") or id
+		if seen[key] then
+			seen[key].count = (seen[key].count or 0) + (count or 0)
+			return
+		end
+		if #items >= MAX_PRICED then return end
+		local entry = { id = id, name = ItemName(id, link), count = count, vendor = VendorPrice(id) }
+		if api then entry.price, entry.age = AuctionatorPrice(api, id, link) end
+		seen[key] = entry
+		items[#items + 1] = entry
+	end
+	for _, id in ipairs(want.items or {}) do
+		if type(id) == "number" then Add(id) end
+	end
+	if want.bags then
+		for bag = 0, 4 do
+			for slot = 1, Try(C_Container.GetContainerNumSlots, bag) or 0 do
+				local info = Try(C_Container.GetContainerItemInfo, bag, slot)
+				if info and info.itemID then Add(info.itemID, info.hyperlink, info.stackCount) end
+			end
+		end
+	end
+	return { auctionator = api ~= nil, items = items }
+end
+
 ns.SECTIONS = {
 	"player", "equipment", "bags", "bank", "quests", "talents", "skills",
-	"trainer", "profession", "merchant", "auction", "items",
+	"trainer", "profession", "merchant", "auction", "items", "prices",
 }

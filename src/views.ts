@@ -481,3 +481,11 @@ export function compare(item: any, equippedItems: any): any {
   else if (!out.equipped.length) out.note = `nothing equipped in ${slots.join(", ")}`;
   return out;
 }
+
+export function prices(p: any): any {
+  if (!truthy(p)) return null;
+  const rows = (or(get(p, "items"), []) as any[]).map((i) => ({ ...i, age_days: get(i, "age") }));
+  const out: any = { items: table(rows, ["id", "name", "count", "price", "age_days", "vendor"]) };
+  if (!get(p, "auctionator")) out.note = "Auctionator is not installed, so only vendor prices are known";
+  return out;
+}

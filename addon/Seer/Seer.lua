@@ -103,6 +103,9 @@ local function HandleRequest(req)
 	elseif req.kind == "item" and type(req.item) == "number" then
 		ns.wantedItems[req.item] = true
 		dirty.items = -1000
+	elseif req.kind == "prices" then
+		ns.wantedPrices = { items = type(req.items) == "table" and req.items or {}, bags = req.bags == true }
+		dirty.prices = -1000
 	elseif req.kind == "config" and type(req.cell) == "number" and req.cell >= 1 and req.cell <= 4 then
 		ns.Strip.cell = req.cell
 		db.cell = req.cell
@@ -186,6 +189,7 @@ local function Push(force)
 			ns.lastSent = { bytes = #text, at = GetTime(), sections = list }
 			unconfirmed[msgId] = { at = GetTime(), sections = list }
 			if sections.items then wipe(ns.wantedItems) end
+			if sections.prices then ns.wantedPrices = nil end
 			return
 		end
 		for _, s in ipairs(list) do

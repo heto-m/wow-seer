@@ -16,6 +16,7 @@ export const SECTION_HELP: Record<string, string> = {
   merchant: "last vendor window",
   auction: "last auction house browse/search results",
   items: "tooltips fetched with get_item",
+  prices: "Auctionator and vendor prices fetched with get_prices",
 };
 
 export const INSTRUCTIONS =
@@ -164,6 +165,18 @@ const EXTRA_TOOLS = [
     inputSchema: schema({ item_id: INT, timeout_seconds: TIMEOUT }, ["item_id"]),
   },
   {
+    name: "get_prices",
+    description:
+      "Auction prices from the player's Auctionator addon (lowest buyout it last saw, and how many days ago) " +
+      "plus the vendor sell price, for item IDs and/or everything in the bags. Works with the auction house closed. " +
+      "Random-suffix gear is priced per exact item when it comes from the bags.",
+    inputSchema: schema({
+      item_ids: { type: "array", items: INT, description: "up to 200" },
+      bags: { ...BOOL, description: "price every item in the bags" },
+      timeout_seconds: TIMEOUT,
+    }),
+  },
+  {
     name: "refresh",
     description:
       "Ask the game to resend sections now (up to ~15 s; data is already pushed on change). " +
@@ -266,6 +279,15 @@ export async function callTool(state: State, name: string, args: Args): Promise<
       return out;
     }
     return { ...views.compare(item, data.equipment), ...gather(state, ["equipment"]).meta };
+  }
+  if (name === "get_prices") {
+    const ids = ((args.item_ids as unknown[]) || []).map((v) => Math.trunc(Number(v))).filter((v) => v > 0).slice(0, 200);
+    const bags = Boolean(args.bags);
+    if (!ids.length && !bags) return { error: "give item_ids, bags: true, or both" };
+    const req = state.request("prices", { items: ids, bags });
+    if (!(await state.wait(() => state.answered(req), timeout))) return { error: "timed out waiting for the game" };
+    const { data, meta } = gather(state, ["prices"]);
+    return { ...views.prices(data.prices), ...meta };
   }
   if (name === "refresh") {
     const names = ((args.sections as string[]) || ["player", "equipment", "bags", "quests"]).filter((s) => s in SECTION_HELP);
