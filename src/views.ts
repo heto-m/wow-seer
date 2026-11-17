@@ -1,3 +1,6 @@
+import type { LootData } from "./loot.js";
+import { dropRate } from "./loot.js";
+
 export const SOULBOUND = new Set(["Soulbound", "Ligado", "Lié", "Seelengebunden", "Vincolato", "Vinculado"]);
 const SET_HEADER = /^(.+) \((\p{Nd}+\/\p{Nd}+)\)$/u;
 const DURABILITY = /^\P{Nd}+ (\p{Nd}+) \/ (\p{Nd}+)$/u;
@@ -132,6 +135,7 @@ export function itemView(item: any, keys: string[] = ["slot", "id", "name", "qua
   if (tooltip) out.tooltip = lines;
   const pawn = pawnText(get(item, "pawn"));
   if (pawn) out.pawn = pawn;
+  if (get(item, "bis") !== null) out.bis_gain = item.bis;
   if (durability) out.durability = durability;
   if (setInfo) {
     if (sets === null || sets === undefined) {
@@ -195,6 +199,17 @@ export function statDiff(newLines: string[], oldLines: string[]): Record<string,
   return out;
 }
 
+function dungeonLockout(l: any): any {
+  const limit = get(l, "limit");
+  const out: any = {
+    last_hour: limit !== null ? `${pyStr(get(l, "lastHour"))}/${pyStr(limit)}` : get(l, "lastHour"),
+    last_24h: get(l, "last24h"),
+  };
+  const free = get(l, "freeIn");
+  if (free !== null) out.next_free_in_minutes = Math.ceil(free / 60);
+  return out;
+}
+
 export function player(p: any): any {
   if (!truthy(p)) return null;
   const out: any = {
@@ -214,6 +229,13 @@ export function player(p: any): any {
   out.stats = stats;
   const pos = get(p, "position");
   if (truthy(pos)) out.position = { map: get(pos, "mapName"), x: get(pos, "x"), y: get(pos, "y") };
+  const weights = get(p, "bisWeights");
+  if (truthy(weights)) {
+    out.bis_weights = { spec: get(weights, "spec"), stats: get(weights, "stats"), source: get(weights, "source") };
+    if (get(weights, "fromLevel") !== null) out.bis_weights.levels = `${pyStr(weights.fromLevel)}-${pyStr(get(weights, "toLevel"))}`;
+  }
+  const lock = get(p, "dungeonLockout");
+  if (truthy(lock)) out.dungeon_lockout = dungeonLockout(lock);
   const clean: any = {};
   for (const [k, v] of Object.entries(out)) if (v !== null && v !== undefined) clean[k] = v;
   return clean;
@@ -291,7 +313,7 @@ export function bags(sections: any, where = "bags", name: string | null = null, 
     }
   }
   const rows = [...merged.values()].map((r) => ({ ...r, pawn: pawnText(get(r, "pawn")) }));
-  const out: any = { items: table(rows, ["id", "name", "count", "quality", "bound", "pawn"]) };
+  const out: any = { items: table(rows, ["id", "name", "count", "quality", "bound", "pawn", "bis"]) };
   if (detail === "full") {
     const tips: any = {};
     for (const r of rows) {
@@ -556,4 +578,61 @@ export function training(t: any, availableOnly = false): any {
   if (!truthy(t)) return null;
   const rows = (t as any[]).filter((s) => !availableOnly || get(s, "status") === "available");
   return { spells: table(rows, ["name", "rank", "level", "cost", "status"]) };
+}
+
+const MAX_SOURCES = 40;
+
+function levels(l: number[] | null): string | null {
+  return l && l.length ? (l.length >= 3 ? `${l[1]}-${l[2]} (enter ${l[0]})` : l.join("-")) : null;
+}
+
+export function loot(data: LootData, itemIds: unknown, dungeon: unknown, name: unknown): any {
+  const ids = new Set(((Array.isArray(itemIds) ? itemIds : []) as unknown[]).map(Number).filter((n) => n > 0));
+  const needle = typeof name === "string" && name.trim() ? name.trim().toLowerCase() : null;
+  const place = typeof dungeon === "string" && dungeon.trim() ? dungeon.trim().toLowerCase() : null;
+  if (!ids.size && !needle && !place) return { error: "give item_ids, name or dungeon" };
+  if (place && !ids.size && !needle) {
+    const found = data.instances.filter((i) => `${i.name} ${i.key}`.toLowerCase().includes(place));
+    if (!found.length) return { error: `no dungeon matches ${dungeon}`, dungeons: data.instances.map((i) => i.name) };
+    return { dungeons: found.slice(0, 3).map((i) => ({
+      name: i.name, levels: levels(i.levels),
+      bosses: i.bosses.map((b) => ({ boss: b.name, items: table(b.items.map((it) => ({
+        id: it.id, note: it.note, drop: dropRate(data, b, it.id) })), ["id", "note", "drop"]) })),
+    })) };
+  }
+  const rows: any[] = [];
+  for (const i of data.instances) {
+    if (place && !`${i.name} ${i.key}`.toLowerCase().includes(place)) continue;
+    for (const b of i.bosses) {
+      for (const it of b.items) {
+        if (ids.has(it.id) || (needle && (it.note ?? "").toLowerCase().includes(needle))) {
+          rows.push({ id: it.id, note: it.note, dungeon: i.name, levels: levels(i.levels), boss: b.name,
+            drop: dropRate(data, b, it.id) });
+        }
+      }
+    }
+  }
+  const out: any = { sources: table(rows.slice(0, MAX_SOURCES), ["id", "note", "dungeon", "levels", "boss", "drop"]) };
+  if (rows.length > MAX_SOURCES) out.more = rows.length - MAX_SOURCES;
+  const missing = [...ids].filter((id) => !rows.some((r) => r.id === id));
+  if (missing.length) out.not_in_atlasloot = missing;
+  return out;
+}
+
+export function crafting(c: any, profession: string | null = null): any {
+  if (!truthy(c)) return null;
+  const list = (c as any[]).filter((p) => !truthy(profession) || matches(profession!, get(p, "name")));
+  return { professions: list.map((p) => ({
+    name: get(p, "name"), skill: `${pyStr(get(p, "rank"))}/${pyStr(get(p, "maxRank"))}`,
+    steps: table(or(get(p, "steps"), []), ["kind", "text", "detail", "count", "cost"]),
+    recipes: table(or(get(p, "recipes"), []), ["name", "count", "fromRank", "toRank", "learned", "color", "cost"]),
+    reagents: table(or(get(p, "reagents"), []), ["id", "name", "need", "have", "source"]),
+  })) };
+}
+
+export function alts(a: any, name: string | null = null): any {
+  if (!truthy(a)) return null;
+  const list = (a as any[]).filter((c) => !truthy(name) || matches(name!, get(c, "name")));
+  const rows = list.map((c) => ({ ...c, zone: [get(c, "zone"), get(c, "subzone")].filter(truthy).join(" - ") || null }));
+  return { characters: table(rows, ["name", "level", "class", "money", "zone", "restXp", "mails", "mailExpiresDays"]) };
 }
