@@ -88,6 +88,8 @@ function collect.player()
 	p.stats.spellCrit = Try(GetSpellCritChance, 2)
 	p.stats.dodge = Try(GetDodgeChance)
 	p.position = Try(ns.PlayerPosition)
+	p.bisWeights = ns.BisWeights and Try(ns.BisWeights)
+	p.dungeonLockout = ns.DungeonLockout and Try(ns.DungeonLockout)
 	return p
 end
 
@@ -135,6 +137,7 @@ local function Container(bags)
 					item.tooltip = TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetBagItem, bag, slot))
 					item.loc = EquipLoc(info.itemID)
 					item.pawn = ns.PawnInfo and Try(ns.PawnInfo, info.hyperlink)
+					item.bis = ns.BisGain and Try(ns.BisGain, info.hyperlink)
 				end
 				entry.items[#entry.items + 1] = item
 			end
@@ -390,6 +393,7 @@ function collect.items()
 		out[#out + 1] = {
 			id = id, name = ItemName(id), tooltip = lines, loc = EquipLoc(id),
 			pawn = ns.PawnInfo and Try(ns.PawnInfo, link),
+			bis = ns.BisGain and Try(ns.BisGain, link),
 		}
 	end
 	return out
@@ -450,5 +454,5 @@ end
 
 ns.SECTIONS = {
 	"player", "equipment", "bags", "bank", "quests", "talents", "skills",
-	"trainer", "profession", "merchant", "auction", "items", "prices", "guide", "fight", "training", "crafting",
+	"trainer", "profession", "merchant", "auction", "items", "prices", "guide", "fight", "training", "crafting", "alts",
 }

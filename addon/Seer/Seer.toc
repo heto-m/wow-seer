@@ -15,7 +15,7 @@
 ## Author: wow-seer
 ## Version: 0.5.1
 ## X-Curse-Project-ID: 1809157
-## OptionalDeps: Auctionator, Questie, QuestieDB, Pawn, Polestar, WhatsTraining, SkillUpForever
+## OptionalDeps: Auctionator, Questie, QuestieDB, Pawn, Polestar, WhatsTraining, SkillUpForever, ForeverLevelingBiS, NovaInstanceTracker, DataStore, DataStore_Characters, DataStore_Mails
 ## SavedVariables: SeerDB
 
 Locale.lua

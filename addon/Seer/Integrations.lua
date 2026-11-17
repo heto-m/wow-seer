@@ -233,9 +233,81 @@ function collect.training()
 	return out
 end
 
+local function BisApi()
+	local api = ForeverLevelingBiS_API
+	return type(api) == "table" and (api.version or 0) >= 2 and api or nil
+end
+
+-- Forever Leveling BiS: how much better an item is than what is worn, for the player's spec and level.
+function ns.BisGain(link)
+	local api = BisApi()
+	if not api or type(link) ~= "string" then return nil end
+	local gain = Try(api.GetGain, link)
+	return type(gain) == "number" and Round(gain) or nil
+end
+
+function ns.BisWeights()
+	local api = BisApi()
+	local weights, info = api and Try(api.GetWeights)
+	if type(weights) ~= "table" then return nil end
+	local out = { stats = {} }
+	for k, v in pairs(weights) do
+		if type(v) == "number" and v ~= 0 then out.stats[k] = Round(v) end
+	end
+	out.spec = Try(api.GetSpec)
+	if type(info) == "table" then out.source, out.fromLevel, out.toLevel = info.source, info.fromLevel, info.toLevel end
+	return out
+end
+
+-- Nova Instance Tracker counts the dungeons entered against Forever's hourly limit.
+function ns.DungeonLockout()
+	if not (NIT and NIT.getInstanceLockoutInfo and NIT.data) then return nil end
+	local hour, day, hourTs = Try(NIT.getInstanceLockoutInfo, NIT)
+	if type(hour) ~= "number" then return nil end
+	local limit = NIT.hourlyLimit
+	local out = { lastHour = hour, limit = limit, last24h = day }
+	local now = GetServerTime and GetServerTime() or time()
+	if limit and hour >= limit and type(hourTs) == "number" then out.freeIn = math.max(0, 3600 - (now - hourTs)) end
+	return out
+end
+
+function collect.alts()
+	local ds = DataStore
+	if type(ds) ~= "table" or not ds.GetCharacters then return nil end
+	local chars = Try(ds.GetCharacters, ds)
+	if type(chars) ~= "table" then return nil end
+	local out = {}
+	for name, key in pairs(chars) do
+		local c = { name = name, level = Try(ds.GetCharacterLevel, ds, key), money = Try(ds.GetMoney, ds, key) }
+		c.class = select(2, Try(ds.GetCharacterClass, ds, key))
+		c.zone, c.subzone = Try(ds.GetLocation, ds, key)
+		c.restXp = Try(ds.GetRestXP, ds, key)
+		local mails = Try(ds.GetNumMails, ds, key)
+		if type(mails) == "number" and mails > 0 then
+			c.mails = mails
+			local soonest
+			for i = 1, mails do
+				local days = Try(ds.GetMailExpiry, ds, key, i)
+				if type(days) == "number" and (not soonest or days < soonest) then soonest = days end
+			end
+			c.mailExpiresDays = Round(soonest)
+		end
+		out[#out + 1] = c
+	end
+	table.sort(out, function(a, b) return (a.level or 0) > (b.level or 0) end)
+	return out
+end
+
 local function SkillUpApi()
 	local api = SkillUpForever and SkillUpForever.API
 	return type(api) == "table" and api.version == 1 and api or nil
+end
+
+local COINS = { Gold = "g", Silver = "s", Copper = "c" }
+
+local function CoinText(text)
+	if type(text) ~= "string" then return text end
+	return Clean((text:gsub("|TInterface\\MoneyFrame\\UI%-(%a+)Icon.-|t", function(kind) return COINS[kind] or "" end)))
 end
 
 local function Pick(row, keys)
@@ -252,7 +324,9 @@ function collect.crafting()
 	for _, p in ipairs(list) do
 		local entry = { name = p.name, rank = p.rank, maxRank = p.maxRank, steps = {}, recipes = {}, reagents = {} }
 		for _, st in ipairs(p.steps or {}) do
-			entry.steps[#entry.steps + 1] = Pick(st, { "kind", "text", "detail", "count", "cost" })
+			local step = Pick(st, { "kind", "text", "count", "cost" })
+			step.detail = CoinText(st.detail)
+			entry.steps[#entry.steps + 1] = step
 		end
 		for _, r in ipairs(p.recipes or {}) do
 			entry.recipes[#entry.recipes + 1] = Pick(r, { "name", "count", "fromRank", "toRank", "learned", "color", "cost" })
@@ -267,6 +341,13 @@ function collect.crafting()
 end
 
 function ns.HookAddons(mark)
+	local bis = BisApi()
+	if bis and bis.OnChanged then
+		pcall(bis.OnChanged, function()
+			mark("bags")
+			mark("player")
+		end)
+	end
 	local skillUp = SkillUpApi()
 	if skillUp and skillUp.Subscribe then
 		pcall(skillUp.Subscribe, function(changes)
