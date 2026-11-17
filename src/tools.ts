@@ -29,7 +29,11 @@ export const INSTRUCTIONS =
   "Read-only access to the player's live WoW: Forever state, pushed by the Seer addon when it changes. " +
   "age_seconds says how old the data is. Money and prices are in copper (10000 = 1 gold). " +
   "quality: 0 poor, 1 common, 2 uncommon, 3 rare, 4 epic. Lists come as {cols, rows}. " +
-  "Text is in the game client's language. Prefer the narrowest tool and filters that answer the question.";
+  "Text is in the game client's language: name items, zones and NPCs as the client does. " +
+  "Seer cannot act in the game or search the auction house: trainer, vendor, profession, bank and auction data " +
+  "is what the player last opened, so ask them to open the window when it is missing or old. " +
+  "Random-suffix names (\"de espíritu\") cover several stat tiers: compare tooltip stats, not names. " +
+  "Prefer the narrowest tool and filters that answer the question.";
 
 type Args = Record<string, any>;
 type Data = Record<string, any>;
@@ -95,7 +99,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_bags",
-    description: "Bag (or bank) contents, stacks merged, free space. With the Pawn addon, gear also shows Pawn's value and upgrade % under the player's active Pawn scale (Pawn ignores set bonuses), and with Forever Leveling BiS a bis column: its score gain over what is worn (negative is worse).",
+    description: "Bag (or bank) contents, stacks merged, free space. With the Pawn addon, gear also shows Pawn's value and upgrade % under the player's active Pawn scale (Pawn ignores set bonuses), and with Forever Leveling BiS a bis column: its score gain over what is worn (negative is worse). Both are stat scores: they ignore set bonuses and follow the spec chosen in each addon (Pawn scale; bis_weights.spec in get_character), which may not be the role being advised.",
     inputSchema: schema({
       where: { type: "string", enum: ["bags", "bank", "both"] },
       name: { ...STR, description: "part of the item name" },
