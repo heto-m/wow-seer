@@ -55,6 +55,10 @@ export function diagnose(state: State, waited = false): string | null {
   if (!fs.existsSync(path.join(addons, "Seer", "Seer.toc"))) {
     return "The Seer addon is not installed. Close the game, run `npx -y wow-seer install`, then start the game.";
   }
+  if (!game.slotDirs().length) {
+    return "Seer's request slots are missing (an addon manager installs only the addon). Close the game, " +
+      "run `npx -y wow-seer install`, then start the game.";
+  }
   const last = state.addon.last_message;
   if (!last) {
     return "Seer has not heard from the game since this server started. Start WoW: Forever with the Seer addon " +

@@ -119,7 +119,7 @@ local function Poll()
 	if nextSlot > slotCount then
 		if not warned.slots then
 			warned.slots = true
-			Say(L.SLOTS_USED)
+			Say(slotCount == 0 and L.NO_SLOTS or L.SLOTS_USED)
 		end
 		return
 	end
@@ -391,6 +391,11 @@ local function Status()
 		db.paused and L.PAUSED_STATE or L.SENDING_STATE)
 	if ScreenshotFormat() ~= "png" then
 		Say(L.PNG_STATUS, ScreenshotFormat())
+	end
+	if slotCount == 0 then
+		Say(L.NO_SLOTS)
+	elseif not Alive() then
+		Say(L.SETUP_HINT)
 	end
 	if ns.lastSent then
 		Say(L.LAST_SENT, ns.lastSent.bytes, GetTime() - ns.lastSent.at, table.concat(ns.lastSent.sections, ", "))

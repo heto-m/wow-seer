@@ -136,6 +136,8 @@ test("missing data says why", async () => {
     assert.match((await call(state, "get_bags")).hint, /not installed.*wow-seer install/);
     fs.mkdirSync(path.join(addons, "Seer"));
     fs.writeFileSync(path.join(addons, "Seer", "Seer.toc"), "");
+    assert.match((await call(state, "get_bags")).hint, /request slots are missing/);
+    fs.mkdirSync(path.join(addons, "Seer_S0001"));
     const bags = await call(state, "get_bags");
     assert.match(bags.hint, /has not heard from the game/);
     assert.match((await call(state, "get_item")).hint, /has not heard/);
