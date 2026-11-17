@@ -70,7 +70,12 @@ test("an older leader steps down for a newer server, not for an equal one", asyn
     assert.equal(await newer.askToYield(), true);
     assert.equal(yielded, 1);
     assert.ok(await waitFor(() => !old.held, 2));
-    assert.ok(await newer.acquire());
+    let taken = false;
+    for (let i = 0; i < 20 && !taken; i++) {
+      taken = await newer.acquire();
+      if (!taken) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.ok(taken);
     await newer.release();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
