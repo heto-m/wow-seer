@@ -150,3 +150,14 @@ test("missing data", () => {
   assert.deepEqual(views.quests(null), { zones: {} });
   assert.deepEqual(views.equipment(null, null, "summary"), { cols: [], rows: [] });
 });
+
+test("prices", () => {
+  const p = { auctionator: true, items: [
+    { id: 2292, name: "Togas de necrología", count: 1, price: 98000, age: 2, vendor: 1830 },
+    { id: 1823, name: "Cayada de cachiporrazo", count: 1, vendor: 120 },
+  ] };
+  assert.deepEqual(views.prices(p), { items: { cols: ["id", "name", "count", "price", "age_days", "vendor"], rows: [
+    [2292, "Togas de necrología", 1, 98000, 2, 1830], [1823, "Cayada de cachiporrazo", 1, null, null, 120],
+  ] } });
+  assert.match(views.prices({ auctionator: false, items: [] }).note, /Auctionator/);
+});

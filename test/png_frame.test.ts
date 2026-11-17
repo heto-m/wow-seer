@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as game from "../src/game.js";
 import { Assembler, NotSeer, decode } from "../src/frame.js";
+import { messageText } from "../src/server.js";
 import { LUA } from "./lua.js";
 import { readCells, renderPng } from "./render.js";
 
@@ -33,7 +34,7 @@ function messages(seconds: number, opts: { width?: number; sx?: number; sy?: num
       const png = renderPng(readCells(file), opts.width ?? 1100, 50, opts.sx ?? 1, opts.sy ?? 1);
       const { header, payload } = decode(png);
       const text = assembler.add(header, payload);
-      if (text) out.push(JSON.parse(text.toString("utf8")));
+      if (text) out.push(JSON.parse(messageText(text)));
     }
     return { files, out };
   } finally {

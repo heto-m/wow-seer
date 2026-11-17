@@ -1,13 +1,21 @@
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 
 import { Assembler, decode, NotSeer } from "./frame.js";
 import * as game from "./game.js";
 import { LeaderLock, readJson, sharedDir, writeJson } from "./shared.js";
-import { versionWarning } from "./version.js";
+import { VERSION, versionWarning } from "./version.js";
 
 const SCAN_EVERY = 300;
+const YIELD_COOLDOWN = 10_000;
+const DEFLATED = 0x5a;
+
+export function messageText(buf: Buffer): string {
+  return (buf[0] === DEFLATED ? zlib.inflateRawSync(buf.subarray(1)) : buf).toString("utf8");
+}
+
 const SYNC_EVERY = 500;
 const HEARTBEAT_EVERY = 30;
 const FAILS_BEFORE_BIGGER_CELLS = 2;
@@ -75,6 +83,7 @@ export class State extends EventEmitter {
 
   apply(msg: any): void {
     const t = now();
+    this.meta.last_error = null;
     const sent = msg.t || t;
     for (const [name, data] of Object.entries(msg.sections || {})) {
       const old = this.sections[name];
@@ -147,7 +156,7 @@ export function processFile(state: State, file: string): boolean | null {
   const text = state.assembler.add(header, payload);
   if (text !== null) {
     try {
-      state.apply(JSON.parse(text.toString("utf8")));
+      state.apply(JSON.parse(messageText(text)));
     } catch (e) {
       state.meta.last_error = `message ${header.msg}: ${(e as Error).message}`;
       log("bad message", state.meta.last_error);
@@ -275,18 +284,42 @@ export function startBackground(state: State): () => void {
   const folder = sharedDir();
   state.folder = folder;
   const stateFile = path.join(folder, "state.json");
-  const lock = new LeaderLock(folder);
+  const lock = new LeaderLock(folder, VERSION);
   const stops: Array<() => void> = [];
+  let askedToYield = false;
+  let yieldedAt = -Infinity;
+  lock.onYield = () => {
+    for (const stop of stops.splice(0)) stop();
+    state.role = "follower";
+    yieldedAt = Date.now();
+    seenMtime = null;
+    state.emit("change");
+    log("a newer wow-seer server took over reading screenshots");
+  };
   let published = -1;
   let seenMtime: number | null = null;
   let busy = false;
   let stopped = false;
 
+  const takeLead = async () => {
+    if (await lock.acquire()) return true;
+    if (askedToYield) return false;
+    askedToYield = true;
+    return (await lock.askToYield()) && (await waitForLock());
+  };
+  const waitForLock = async () => {
+    for (let i = 0; i < 10; i++) {
+      if (await lock.acquire()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  };
+
   const tick = async () => {
     if (busy || stopped) return;
     busy = true;
     try {
-      if (state.role !== "leader" && (await lock.acquire())) {
+      if (state.role !== "leader" && Date.now() - yieldedAt > YIELD_COOLDOWN && (await takeLead())) {
         if (stopped) return;
         const previous = readJson(stateFile);
         if (previous) state.load(previous);

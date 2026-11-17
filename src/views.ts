@@ -115,12 +115,23 @@ export function tidyTooltip(lines: any, name: any = null): { lines: string[]; se
   return { lines: out, setInfo, durability };
 }
 
+export function pawnText(p: any): string | null {
+  const scales = (Array.isArray(p) ? p : truthy(p) ? [p] : []).filter((x) => get(x, "value") !== null);
+  if (!scales.length) return null;
+  return scales.map((x) => {
+    const upgrade = get(x, "upgrade");
+    return `${pyStr(get(x, "scale"))} ${pyStr(get(x, "value"))}` + (upgrade ? `, +${upgrade}% upgrade` : "");
+  }).join("; ");
+}
+
 export function itemView(item: any, keys: string[] = ["slot", "id", "name", "quality"],
   sets: Record<string, any> | null = null, tooltip = true): any {
   const out: any = {};
   for (const k of keys) if (get(item, k) !== null) out[k] = item[k];
   const { lines, setInfo, durability } = tidyTooltip(get(item, "tooltip"), get(item, "name"));
   if (tooltip) out.tooltip = lines;
+  const pawn = pawnText(get(item, "pawn"));
+  if (pawn) out.pawn = pawn;
   if (durability) out.durability = durability;
   if (setInfo) {
     if (sets === null || sets === undefined) {
@@ -201,6 +212,8 @@ export function player(p: any): any {
     if (v !== null && v !== undefined) stats[k] = typeof v === "number" && !Number.isInteger(v) ? pyRound1(v) : v;
   }
   out.stats = stats;
+  const pos = get(p, "position");
+  if (truthy(pos)) out.position = { map: get(pos, "mapName"), x: get(pos, "x"), y: get(pos, "y") };
   const clean: any = {};
   for (const [k, v] of Object.entries(out)) if (v !== null && v !== undefined) clean[k] = v;
   return clean;
@@ -277,8 +290,8 @@ export function bags(sections: any, where = "bags", name: string | null = null, 
       merged.set(key, { ...it });
     }
   }
-  const rows = [...merged.values()];
-  const out: any = { items: table(rows, ["id", "name", "count", "quality", "bound"]) };
+  const rows = [...merged.values()].map((r) => ({ ...r, pawn: pawnText(get(r, "pawn")) }));
+  const out: any = { items: table(rows, ["id", "name", "count", "quality", "bound", "pawn"]) };
   if (detail === "full") {
     const tips: any = {};
     for (const r of rows) {
@@ -327,6 +340,16 @@ function objective(o: any): string {
   return text + (truthy(get(o, "done")) ? " [done]" : "");
 }
 
+function place(p: any): any {
+  if (!truthy(p)) return null;
+  const out: any = { name: get(p, "name"), zone: get(p, "zone") };
+  if (get(p, "x") !== null) Object.assign(out, { x: get(p, "x"), y: get(p, "y") });
+  if (get(p, "object")) out.object = true;
+  if ((get(p, "spots") ?? 0) > 1) out.spots = p.spots;
+  if (truthy(get(p, "from"))) out.dropped_by = p.from;
+  return out;
+}
+
 export function quests(qs: any, zone: string | null = null, unfinishedOnly = false): any {
   const zones: any = {};
   for (const q of or(qs, [])) {
@@ -336,6 +359,10 @@ export function quests(qs: any, zone: string | null = null, unfinishedOnly = fal
     if (truthy(get(q, "complete"))) entry.complete = true;
     if (truthy(get(q, "failed"))) entry.failed = true;
     entry.objectives = (or(get(q, "objectives"), []) as any[]).map(objective);
+    const finish = place(get(q, "finish"));
+    if (finish) entry.turn_in = finish;
+    const where = (or(get(q, "where"), []) as any[]).map(place).filter(Boolean);
+    if (where.length) entry.where = where;
     const key = or(get(q, "zone"), "?");
     (zones[key] ??= []).push(entry);
   }
@@ -480,4 +507,53 @@ export function compare(item: any, equippedItems: any): any {
   if (!truthy(slots)) out.note = "could not tell which slot this item goes in";
   else if (!out.equipped.length) out.note = `nothing equipped in ${slots.join(", ")}`;
   return out;
+}
+
+export function prices(p: any): any {
+  if (!truthy(p)) return null;
+  const rows = (or(get(p, "items"), []) as any[]).map((i) => ({ ...i, age_days: get(i, "age") }));
+  const out: any = { items: table(rows, ["id", "name", "count", "price", "age_days", "vendor", "disenchant"]) };
+  if (!get(p, "auctionator")) out.note = "Auctionator is not installed, so only vendor prices are known";
+  return out;
+}
+
+function point(p: any): any {
+  return truthy(p) ? { map: get(p, "mapName"), x: get(p, "x"), y: get(p, "y") } : null;
+}
+
+export function guide(g: any): any {
+  if (!truthy(g)) return null;
+  const goals = (or(get(g, "goals"), []) as any[]).map((x) => {
+    const out: any = {};
+    for (const k of ["kind", "text", "status", "quest", "npc", "progress", "optional"]) {
+      if (get(x, k) !== null) out[k] = x[k];
+    }
+    const at = point(get(x, "at"));
+    if (at) out.at = at;
+    return out;
+  });
+  const out: any = { guide: get(g, "guide"), step: `${pyStr(get(g, "step"))}/${pyStr(get(g, "steps"))}`,
+    title: get(g, "title"), note: get(g, "note"), goals };
+  const wp = get(g, "waypoint");
+  if (truthy(wp)) out.waypoint = { ...point(wp), label: get(wp, "label") };
+  return out;
+}
+
+export function fight(f: any): any {
+  if (!truthy(f)) return null;
+  const secs = or(get(f, "seconds"), 0);
+  const per = (v: any) => (secs > 0 && typeof v === "number" ? Math.round((v / secs) * 10) / 10 : null);
+  const rows = (or(get(f, "players"), []) as any[])
+    .map((p) => ({ ...p, me: get(p, "me") ? true : null, dps: per(get(p, "damage")), hps: per(get(p, "healing")) }))
+    .sort((a, b) => (or(b.damage, 0) + or(b.healing, 0)) - (or(a.damage, 0) + or(a.healing, 0)));
+  const out: any = { seconds: secs,
+    players: table(rows, ["name", "me", "damage", "dps", "healing", "hps", "taken"]) };
+  if (truthy(get(f, "deaths"))) out.deaths = f.deaths;
+  return out;
+}
+
+export function training(t: any, availableOnly = false): any {
+  if (!truthy(t)) return null;
+  const rows = (t as any[]).filter((s) => !availableOnly || get(s, "status") === "available");
+  return { spells: table(rows, ["name", "rank", "level", "cost", "status"]) };
 }

@@ -123,6 +123,17 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
     });
     assert.equal(locales.status, 0, locales.stderr);
     assert.match(locales.stdout, /locales ok/);
+    const priced = spawnSync(LUA!, [path.join(ROOT, "test", "mock_wow.lua"), game.addonsDir(), tmp, "0"], {
+      encoding: "utf8",
+      env: { ...process.env, MOCK_PRICES: "1" },
+    });
+    assert.equal(priced.status, 0, priced.stderr);
+    const p = JSON.parse(priced.stdout);
+    assert.equal(p.auctionator, true);
+    assert.deepEqual(p.items.map((i: any) => [i.id, i.price ?? null, i.age ?? null, i.vendor, i.count ?? null]), [
+      [5240, 9000, 3, 52400, null], [777, null, null, 7770, null],
+      [2589, 40, 0, 25890, 5], [5240, 9000, 3, 52400, 10], [159, null, null, 1590, 15],
+    ]);
     const jpeg = run("jpeg");
     assert.match(jpeg, /popup SEER_PNG jpeg/);
     assert.match(jpeg, /shots 0/);

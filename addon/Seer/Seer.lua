@@ -5,7 +5,7 @@ local POLL_ALIVE, POLL_IDLE = 10, 60
 local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
-local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills" }
+local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
 
@@ -103,6 +103,9 @@ local function HandleRequest(req)
 	elseif req.kind == "item" and type(req.item) == "number" then
 		ns.wantedItems[req.item] = true
 		dirty.items = -1000
+	elseif req.kind == "prices" then
+		ns.wantedPrices = { items = type(req.items) == "table" and req.items or {}, bags = req.bags == true }
+		dirty.prices = -1000
 	elseif req.kind == "config" and type(req.cell) == "number" and req.cell >= 1 and req.cell <= 4 then
 		ns.Strip.cell = req.cell
 		db.cell = req.cell
@@ -154,6 +157,17 @@ local function Ready(now)
 	return list
 end
 
+local COMPRESS_FROM = 200
+
+-- "Z" marks raw deflate for the server; JSON never starts with it.
+local function Compress(text)
+	local lib = ns.LibDeflate or (LibStub and LibStub("LibDeflate", true))
+	if not lib or #text < COMPRESS_FROM then return text end
+	local ok, packed = pcall(lib.CompressDeflate, lib, text, { level = 1 })
+	if ok and type(packed) == "string" and #packed + 1 < #text then return "Z" .. packed end
+	return text
+end
+
 local function Push(force)
 	local now = GetTime()
 	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
@@ -177,6 +191,7 @@ local function Push(force)
 		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
 		build = (GetBuildInfo()), version = VERSION, acks = sent, sections = sections,
 	})
+	text = Compress(text)
 	local started = GetTime()
 	for _, s in ipairs(list) do dirty[s] = nil end
 	dirty.acks = nil
@@ -186,6 +201,7 @@ local function Push(force)
 			ns.lastSent = { bytes = #text, at = GetTime(), sections = list }
 			unconfirmed[msgId] = { at = GetTime(), sections = list }
 			if sections.items then wipe(ns.wantedItems) end
+			if sections.prices then ns.wantedPrices = nil end
 			return
 		end
 		for _, s in ipairs(list) do
@@ -224,6 +240,9 @@ local EVENTS = {
 	PLAYER_MONEY = { "player" },
 	PLAYER_LEVEL_UP = { "player", "talents" },
 	ZONE_CHANGED_NEW_AREA = { "player" },
+	ZONE_CHANGED = { "player" },
+	PLAYER_REGEN_ENABLED = { "fight" },
+	ZONE_CHANGED_INDOORS = { "player" },
 	QUEST_LOG_UPDATE = { "quests" },
 	CHARACTER_POINTS_CHANGED = { "talents" },
 	TRAIT_CONFIG_UPDATED = { "talents" },
@@ -247,18 +266,36 @@ local OPEN = {
 	MERCHANT_CLOSED = { "merchantOpen", false },
 }
 
+local browseQueued = false
+
+local function RebuildBrowse()
+	browseQueued = false
+	local a = ns.auction or {}
+	local ok, browse = pcall(ns.AuctionBrowse)
+	if not ok then return end
+	a.browse, a.at = browse, time()
+	ns.auction = a
+	Mark("auction")
+end
+
+-- A big search fires hundreds of item-info events; rebuilding 500 rows on each one ran past the script time limit.
+local function QueueBrowse()
+	if browseQueued then return end
+	browseQueued = true
+	C_Timer.After(0.5, RebuildBrowse)
+end
+
 local function OnAuction(event, arg)
 	if event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_KEY_ITEM_INFO_RECEIVED" then
-		if ns.auctionMissingNames and ns.auction and ns.auction.browse then
-			ns.auction.browse = ns.AuctionBrowse()
-			Mark("auction")
-		end
+		if ns.auctionMissingNames and ns.auction and ns.auction.browse then QueueBrowse() end
+		return
+	end
+	if event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" or event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
+		QueueBrowse()
 		return
 	end
 	local a = ns.auction or {}
-	if event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" or event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
-		a.browse = ns.AuctionBrowse()
-	elseif event == "COMMODITY_SEARCH_RESULTS_UPDATED" then
+	if event == "COMMODITY_SEARCH_RESULTS_UPDATED" then
 		a.search = ns.AuctionCommodity(arg)
 	elseif event == "ITEM_SEARCH_RESULTS_UPDATED" then
 		a.search = ns.AuctionItem(arg)
@@ -283,6 +320,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
 		elseif event == "PLAYER_LOGIN" then
 			slotCount = CountSlots()
 			C_Timer.NewTicker(1, Tick)
+			pcall(ns.HookAddons, Mark)
 		elseif event == "PLAYER_ENTERING_WORLD" then
 			for _, s in ipairs(ALWAYS) do Mark(s) end
 			C_Timer.After(8, function() if not loading then worldReady = true end end)

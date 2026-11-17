@@ -16,6 +16,10 @@ export const SECTION_HELP: Record<string, string> = {
   merchant: "last vendor window",
   auction: "last auction house browse/search results",
   items: "tooltips fetched with get_item",
+  prices: "Auctionator and vendor prices fetched with get_prices",
+  guide: "the Polestar guide step (needs the Polestar addon)",
+  fight: "the last fight from the game's damage meter",
+  training: "spells to learn, from the What's Training addon",
 };
 
 export const INSTRUCTIONS =
@@ -56,7 +60,7 @@ function bagSections(args: Args): string[] {
 const TOOLS: SectionTool[] = [
   {
     name: "get_character",
-    description: "Level, class, money, xp, zone, stats, equipped gear, talents taken, profession levels.",
+    description: "Level, class, money, xp, zone and map position (x, y from 0 to 100), stats, equipped gear, talents taken, profession levels.",
     inputSchema: schema({ detail: { ...DETAIL, description: "summary (default): gear names only; full: gear tooltips" } }),
     sections: ["player", "equipment", "talents", "skills"],
     view: (d, a) => ({
@@ -85,7 +89,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_bags",
-    description: "Bag (or bank) contents, stacks merged, free space.",
+    description: "Bag (or bank) contents, stacks merged, free space. With the Pawn addon, gear also shows Pawn's value and upgrade % under the player's active Pawn scale (Pawn ignores set bonuses).",
     inputSchema: schema({
       where: { type: "string", enum: ["bags", "bank", "both"] },
       name: { ...STR, description: "part of the item name" },
@@ -104,7 +108,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_quests",
-    description: "Quest log grouped by zone, with objective progress.",
+    description: "Quest log grouped by zone, with objective progress. With Questie installed, each quest also has where to turn it in and where its objectives are (zone, x, y from 0 to 100).",
     inputSchema: schema({ zone: { ...STR, description: "part of the zone or quest title" }, unfinished_only: BOOL }),
     sections: ["quests"],
     view: (d, a) => views.quests(d.quests, a.zone, Boolean(a.unfinished_only)),
@@ -144,6 +148,27 @@ const TOOLS: SectionTool[] = [
     view: (d, a) => views.profession(d.profession, a.name, Boolean(a.craftable_only)),
   },
   {
+    name: "get_guide",
+    description: "The step the player's Polestar leveling guide is on: what to do, quests, NPCs and map coordinates.",
+    inputSchema: schema(),
+    sections: ["guide"],
+    view: (d) => views.guide(d.guide),
+  },
+  {
+    name: "get_last_fight",
+    description: "The last fight from the game's built-in damage meter (what Details shows on Forever): damage, healing and damage taken per group member, with per-second rates, and deaths.",
+    inputSchema: schema(),
+    sections: ["fight"],
+    view: (d) => views.fight(d.fight),
+  },
+  {
+    name: "get_training",
+    description: "Class spells to learn now and in the next levels, with trainer cost (from the What's Training addon).",
+    inputSchema: schema({ available_only: BOOL }),
+    sections: ["training"],
+    view: (d, a) => views.training(d.training, Boolean(a.available_only)),
+  },
+  {
     name: "get_merchant",
     description: "The last vendor window the player opened: items and prices.",
     inputSchema: schema({ name: STR, usable_only: BOOL }),
@@ -162,6 +187,18 @@ const EXTRA_TOOLS = [
     name: "get_item",
     description: "The in-game tooltip of any item by ID (the game client must know the item).",
     inputSchema: schema({ item_id: INT, timeout_seconds: TIMEOUT }, ["item_id"]),
+  },
+  {
+    name: "get_prices",
+    description:
+      "Auction prices from the player's Auctionator addon (lowest buyout it last saw, and how many days ago) " +
+      "plus the vendor sell price and, for gear, Auctionator's disenchant value, for item IDs and/or everything in the bags. Works with the auction house closed. " +
+      "Random-suffix gear is priced per exact item when it comes from the bags.",
+    inputSchema: schema({
+      item_ids: { type: "array", items: INT, description: "up to 200" },
+      bags: { ...BOOL, description: "price every item in the bags" },
+      timeout_seconds: TIMEOUT,
+    }),
   },
   {
     name: "refresh",
@@ -266,6 +303,15 @@ export async function callTool(state: State, name: string, args: Args): Promise<
       return out;
     }
     return { ...views.compare(item, data.equipment), ...gather(state, ["equipment"]).meta };
+  }
+  if (name === "get_prices") {
+    const ids = ((args.item_ids as unknown[]) || []).map((v) => Math.trunc(Number(v))).filter((v) => v > 0).slice(0, 200);
+    const bags = Boolean(args.bags);
+    if (!ids.length && !bags) return { error: "give item_ids, bags: true, or both" };
+    const req = state.request("prices", { items: ids, bags });
+    if (!(await state.wait(() => state.answered(req), timeout))) return { error: "timed out waiting for the game" };
+    const { data, meta } = gather(state, ["prices"]);
+    return { ...views.prices(data.prices), ...meta };
   }
   if (name === "refresh") {
     const names = ((args.sections as string[]) || ["player", "equipment", "bags", "quests"]).filter((s) => s in SECTION_HELP);

@@ -4,6 +4,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
+import { compareVersions } from "./version.js";
+
 export function sharedDir(): string {
   let dir = process.env.WOW_SEER_DIR;
   if (!dir) {
@@ -16,11 +18,14 @@ export function sharedDir(): string {
 }
 
 // A listening socket is the lock: the OS frees it when the process dies, and Node has no flock.
+const YIELD_WAIT = 1500;
+
 export class LeaderLock {
   readonly address: string;
+  onYield: (() => void) | null = null;
   private server: net.Server | null = null;
 
-  constructor(folder: string) {
+  constructor(folder: string, readonly version = "0") {
     this.address = process.platform === "win32"
       ? "\\\\.\\pipe\\wow-seer-" + createHash("sha1").update(path.resolve(folder).toLowerCase()).digest("hex").slice(0, 16)
       : path.join(folder, "leader.sock");
@@ -48,9 +53,44 @@ export class LeaderLock {
     return new Promise((resolve) => (server ? server.close(() => resolve()) : resolve()));
   }
 
+  // A newer server asks the leader to step down; older leaders just close the socket.
+  askToYield(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = net.connect(this.address);
+      const done = (ok: boolean) => {
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(YIELD_WAIT, () => done(false));
+      socket.once("connect", () => socket.write(`yield ${this.version}\n`));
+      socket.on("data", (d) => done(d.toString().startsWith("ok")));
+      socket.once("error", () => done(false));
+      socket.once("close", () => done(false));
+    });
+  }
+
+  private answer(socket: net.Socket): void {
+    let text = "";
+    socket.setTimeout(YIELD_WAIT, () => socket.destroy());
+    socket.on("error", () => socket.destroy());
+    socket.on("data", (d) => {
+      text += d.toString();
+      const asked = /^yield (\S+)\n/.exec(text);
+      if (!asked) return;
+      const onYield = this.onYield;
+      if (!onYield || compareVersions(asked[1], this.version) !== 1) {
+        socket.destroy();
+        return;
+      }
+      onYield();
+      socket.end("ok\n");
+      void this.release();
+    });
+  }
+
   private listen(): Promise<boolean> {
     return new Promise((resolve) => {
-      const server = net.createServer((socket) => socket.destroy());
+      const server = net.createServer((socket) => this.answer(socket));
       server.once("error", () => resolve(false));
       server.listen(this.address, () => {
         server.unref();

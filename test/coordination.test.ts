@@ -55,3 +55,29 @@ async function waitFor(predicate: () => boolean, seconds: number): Promise<boole
   }
   return predicate();
 }
+
+test("an older leader steps down for a newer server, not for an equal one", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seer-yield-"));
+  try {
+    const old = new LeaderLock(tmp, "0.5.0");
+    let yielded = 0;
+    old.onYield = () => yielded++;
+    assert.ok(await old.acquire());
+    const same = new LeaderLock(tmp, "0.5.0");
+    assert.equal(await same.askToYield(), false);
+    assert.equal(yielded, 0);
+    const newer = new LeaderLock(tmp, "0.6.0");
+    assert.equal(await newer.askToYield(), true);
+    assert.equal(yielded, 1);
+    assert.ok(await waitFor(() => !old.held, 2));
+    let taken = false;
+    for (let i = 0; i < 20 && !taken; i++) {
+      taken = await newer.acquire();
+      if (!taken) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.ok(taken);
+    await newer.release();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

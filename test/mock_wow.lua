@@ -99,7 +99,10 @@ C_TooltipInfo = {
 	GetBagItem = function()
 		local lines = { { leftText = "Varita" } }
 		if os.getenv("MOCK_BIG") then
-			for i = 1, 400 do lines[#lines + 1] = { leftText = "Linea larga de tooltip numero " .. i } end
+			math.randomseed(7)
+			for _ = 1, 400 do
+				lines[#lines + 1] = { leftText = string.format("%08x%08x%08x", math.random(0, 2 ^ 30), math.random(0, 2 ^ 30), math.random(0, 2 ^ 30)) }
+			end
 		end
 		return { lines = lines }
 	end,
@@ -171,6 +174,18 @@ if os.getenv("MOCK_LOCALES") then
 		for key in pairs(t) do assert(ns.EN[key], locale .. " has unknown " .. key) end
 	end
 	print("locales ok")
+	os.exit(0)
+end
+if os.getenv("MOCK_PRICES") then
+	C_Item.GetItemInfo = function(id) return "Objeto " .. id, nil, 2, 20, 20, nil, nil, 1, "", 0, id * 10 end
+	Auctionator = { API = { v1 = {
+		GetAuctionPriceByItemID = function(caller, id) assert(caller == "Seer"); if id == 5240 then return 9000 end end,
+		GetAuctionAgeByItemID = function(_, id) if id == 5240 then return 3 end end,
+		GetAuctionPriceByItemLink = function(_, link) if link:find("item:2589") then return 40 end end,
+		GetAuctionAgeByItemLink = function() return 0 end,
+	} } }
+	ns.wantedPrices = { items = { 5240, 777 }, bags = true }
+	print(ns.ToJson(ns.collect.prices()))
 	os.exit(0)
 end
 Fire("ADDON_LOADED", "Seer")
