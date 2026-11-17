@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 
 import { McpServer } from "../src/mcp.js";
@@ -86,7 +89,7 @@ test("seer_status warns when the addon version differs", async () => {
   };
   const idle = await status(new State());
   assert.equal(idle.addon_version, null);
-  assert.equal(idle.warning, undefined);
+  assert.doesNotMatch(idle.warning ?? "", /update/);
 
   const write = process.stderr.write;
   const logged: string[] = [];
@@ -117,4 +120,36 @@ test("seer_status warns when the addon version differs", async () => {
   assert.equal((await status(state)).warning, undefined);
   state.apply({ msg: 6, t: Date.now() / 1000, version: `${major}.${Number(minor) + 1}.0` });
   assert.match((await status(state)).warning, /update the MCP server/);
+});
+
+test("missing data says why", async () => {
+  const call = async (state: State, name: string) => {
+    const r = await ask({ id: 30, method: "tools/call", params: { _meta: MODERN, name, arguments: { timeout_seconds: 0.1, item_id: 1 } } }, state);
+    return JSON.parse(r.result.content[0].text);
+  };
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seer-hint-"));
+  const addons = path.join(tmp, "Interface", "AddOns");
+  fs.mkdirSync(addons, { recursive: true });
+  process.env.WOW_DIR = tmp;
+  try {
+    const state = new State();
+    assert.match((await call(state, "get_bags")).hint, /not installed.*wow-seer install/);
+    fs.mkdirSync(path.join(addons, "Seer"));
+    fs.writeFileSync(path.join(addons, "Seer", "Seer.toc"), "");
+    const bags = await call(state, "get_bags");
+    assert.match(bags.hint, /has not heard from the game/);
+    assert.match((await call(state, "get_item")).hint, /has not heard/);
+    assert.match((await call(state, "seer_status")).warning, /has not heard/);
+    state.apply({ msg: 1, t: Date.now() / 1000, version: "0.0.0-test", sections: { bags: [] } });
+    const guide = await call(state, "get_guide");
+    assert.equal(guide.hint, undefined);
+    assert.match(guide.not_seen_yet.guide, /Polestar/);
+    assert.match((await call(state, "get_trainer")).not_seen_yet.trainer, /open a trainer/);
+    state.addon.last_message = Date.now() / 1000 - 600;
+    assert.match((await call(state, "get_item")).hint, /Last heard from the game 6\d\d s ago/);
+    assert.equal((await call(state, "get_guide")).hint, undefined);
+  } finally {
+    delete process.env.WOW_DIR;
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  }
 });

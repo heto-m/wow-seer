@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import * as game from "./game.js";
 import { loadLoot } from "./loot.js";
 import { now, State } from "./server.js";
@@ -24,6 +27,46 @@ export const SECTION_HELP: Record<string, string> = {
   crafting: "profession leveling plans, from the SkillUp Forever addon",
   alts: "the player's other characters, from the DataStore addon",
 };
+
+const WHEN_MISSING: Record<string, string> = {
+  bank: "open the bank in game",
+  trainer: "open a trainer in game",
+  profession: "open a profession window in game",
+  merchant: "talk to a vendor in game",
+  auction: "open the auction house and browse or search",
+  items: "use get_item",
+  prices: "use get_prices",
+  guide: "needs the Polestar addon with a guide loaded",
+  fight: "arrives after a fight ends",
+  training: "needs the What's Training addon",
+  crafting: "needs the SkillUp Forever addon",
+  alts: "needs the DataStore and DataStore_Characters addons; each character appears after logging in once",
+};
+
+const STALE_GAME = 120;
+
+export function diagnose(state: State, waited = false): string | null {
+  let addons: string;
+  try {
+    addons = game.addonsDir();
+  } catch (e) {
+    return (e as Error).message;
+  }
+  if (!fs.existsSync(path.join(addons, "Seer", "Seer.toc"))) {
+    return "The Seer addon is not installed. Close the game, run `npx -y wow-seer install`, then start the game.";
+  }
+  const last = state.addon.last_message;
+  if (!last) {
+    return "Seer has not heard from the game since this server started. Start WoW: Forever with the Seer addon " +
+      "enabled and log in; in game, /seer status shows whether it is sending (it needs screenshots saved as PNG).";
+  }
+  const quiet = Math.floor(now() - last);
+  if (waited && quiet > STALE_GAME) {
+    return `Last heard from the game ${quiet} s ago: is it still running, logged in and out of loading screens? ` +
+      "Seer also waits while the player is in combat.";
+  }
+  return null;
+}
 
 export const INSTRUCTIONS =
   "Read-only access to the player's live WoW: Forever state, pushed by the Seer addon when it changes. " +
@@ -301,13 +344,22 @@ function gather(state: State, names: string[]): { data: Data; meta: Data } {
   if (ages.length) meta.age_seconds = Math.max(...ages);
   if (usedSaved) meta.source = "saved at last logout or /reload";
   if (names.length !== 1 || names[0] !== "bank") missing = missing.filter((n) => n !== "bank");
-  if (missing.length) meta.not_seen_yet = Object.fromEntries(missing.map((n) => [n, SECTION_HELP[n]]));
+  if (missing.length) {
+    meta.not_seen_yet = Object.fromEntries(missing.map((n) => [n, WHEN_MISSING[n] ?? SECTION_HELP[n]]));
+    const hint = diagnose(state);
+    if (hint) meta.hint = hint;
+  }
   return { data, meta };
 }
 
 async function fetchItem(state: State, itemId: number, timeout: number): Promise<boolean> {
   const req = state.request("item", { item: itemId });
   return state.wait(() => state.answered(req), timeout);
+}
+
+function timedOut(state: State): Data {
+  const hint = diagnose(state, true);
+  return hint ? { error: "timed out waiting for the game", hint } : { error: "timed out waiting for the game" };
 }
 
 function safe(fn: () => string): string {
@@ -332,7 +384,7 @@ export async function callTool(state: State, name: string, args: Args): Promise<
     let { data, meta } = gather(state, names);
     let item = views.candidate(data, itemId);
     if (item === null) {
-      if (!(await fetchItem(state, itemId, timeout))) return { error: "timed out waiting for the game" };
+      if (!(await fetchItem(state, itemId, timeout))) return timedOut(state);
       ({ data, meta } = gather(state, names));
       item = views.candidate(data, itemId);
       if (item === null) return { error: `the game does not know item ${itemId} yet; try again in a few seconds` };
@@ -349,7 +401,7 @@ export async function callTool(state: State, name: string, args: Args): Promise<
     const bags = Boolean(args.bags);
     if (!ids.length && !bags) return { error: "give item_ids, bags: true, or both" };
     const req = state.request("prices", { items: ids, bags });
-    if (!(await state.wait(() => state.answered(req), timeout))) return { error: "timed out waiting for the game" };
+    if (!(await state.wait(() => state.answered(req), timeout))) return timedOut(state);
     const { data, meta } = gather(state, ["prices"]);
     return { ...views.prices(data.prices), ...meta };
   }
@@ -367,7 +419,7 @@ export async function callTool(state: State, name: string, args: Args): Promise<
       names.map((n) => [n, state.sections[n] ? Math.floor(t - state.sections[n].game_time) : null]),
     );
     const out: Data = { age_seconds: ages };
-    if (!ok) out.warning = "timed out; is the game running with Seer enabled and out of combat?";
+    if (!ok) out.warning = `timed out. ${diagnose(state, true) ?? "Seer waits while the player is in combat or on a loading screen."}`;
     return out;
   }
   if (name === "seer_status") {
@@ -386,7 +438,7 @@ export async function callTool(state: State, name: string, args: Args): Promise<
       addon_version: last ? state.addon.version || "unknown" : null,
       role: state.role,
     };
-    const warning = last ? versionWarning(state.addon.version) : null;
+    const warning = (last ? versionWarning(state.addon.version) : null) ?? diagnose(state);
     if (warning) status.warning = warning;
     if (state.addon.slots) status.request_slots_left = Math.max(0, state.addon.slots - state.addon.slot + 1);
     return status;
