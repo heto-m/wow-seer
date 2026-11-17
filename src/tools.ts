@@ -46,6 +46,13 @@ const WHEN_MISSING: Record<string, string> = {
 const STALE_GAME = 120;
 
 export function diagnose(state: State, waited = false): string | null {
+  const last = state.addon.last_message;
+  if (last) {
+    const quiet = Math.floor(now() - last);
+    if (!waited || quiet <= STALE_GAME) return null;
+    return `Last heard from the game ${quiet} s ago: is it still running, logged in and out of loading screens? ` +
+      "Seer also waits while the player is in combat.";
+  }
   let addons: string;
   try {
     addons = game.addonsDir();
@@ -59,17 +66,8 @@ export function diagnose(state: State, waited = false): string | null {
     return "Seer's request slots are missing (an addon manager installs only the addon). Close the game, " +
       "run `npx -y wow-seer install`, then start the game.";
   }
-  const last = state.addon.last_message;
-  if (!last) {
-    return "Seer has not heard from the game since this server started. Start WoW: Forever with the Seer addon " +
-      "enabled and log in; in game, /seer status shows whether it is sending (it needs screenshots saved as PNG).";
-  }
-  const quiet = Math.floor(now() - last);
-  if (waited && quiet > STALE_GAME) {
-    return `Last heard from the game ${quiet} s ago: is it still running, logged in and out of loading screens? ` +
-      "Seer also waits while the player is in combat.";
-  }
-  return null;
+  return "Seer has not heard from the game since this server started. Start WoW: Forever with the Seer addon " +
+    "enabled and log in; in game, /seer status shows whether it is sending (it needs screenshots saved as PNG).";
 }
 
 export const INSTRUCTIONS =
