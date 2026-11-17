@@ -135,6 +135,7 @@ export function itemView(item: any, keys: string[] = ["slot", "id", "name", "qua
   if (tooltip) out.tooltip = lines;
   const pawn = pawnText(get(item, "pawn"));
   if (pawn) out.pawn = pawn;
+  if (get(item, "bis") !== null) out.bis_gain = item.bis;
   if (durability) out.durability = durability;
   if (setInfo) {
     if (sets === null || sets === undefined) {
@@ -198,6 +199,17 @@ export function statDiff(newLines: string[], oldLines: string[]): Record<string,
   return out;
 }
 
+function dungeonLockout(l: any): any {
+  const limit = get(l, "limit");
+  const out: any = {
+    last_hour: limit !== null ? `${pyStr(get(l, "lastHour"))}/${pyStr(limit)}` : get(l, "lastHour"),
+    last_24h: get(l, "last24h"),
+  };
+  const free = get(l, "freeIn");
+  if (free !== null) out.next_free_in_minutes = Math.ceil(free / 60);
+  return out;
+}
+
 export function player(p: any): any {
   if (!truthy(p)) return null;
   const out: any = {
@@ -217,6 +229,13 @@ export function player(p: any): any {
   out.stats = stats;
   const pos = get(p, "position");
   if (truthy(pos)) out.position = { map: get(pos, "mapName"), x: get(pos, "x"), y: get(pos, "y") };
+  const weights = get(p, "bisWeights");
+  if (truthy(weights)) {
+    out.bis_weights = { spec: get(weights, "spec"), stats: get(weights, "stats"), source: get(weights, "source") };
+    if (get(weights, "fromLevel") !== null) out.bis_weights.levels = `${pyStr(weights.fromLevel)}-${pyStr(get(weights, "toLevel"))}`;
+  }
+  const lock = get(p, "dungeonLockout");
+  if (truthy(lock)) out.dungeon_lockout = dungeonLockout(lock);
   const clean: any = {};
   for (const [k, v] of Object.entries(out)) if (v !== null && v !== undefined) clean[k] = v;
   return clean;
@@ -294,7 +313,7 @@ export function bags(sections: any, where = "bags", name: string | null = null, 
     }
   }
   const rows = [...merged.values()].map((r) => ({ ...r, pawn: pawnText(get(r, "pawn")) }));
-  const out: any = { items: table(rows, ["id", "name", "count", "quality", "bound", "pawn"]) };
+  const out: any = { items: table(rows, ["id", "name", "count", "quality", "bound", "pawn", "bis"]) };
   if (detail === "full") {
     const tips: any = {};
     for (const r of rows) {
@@ -609,4 +628,11 @@ export function crafting(c: any, profession: string | null = null): any {
     recipes: table(or(get(p, "recipes"), []), ["name", "count", "fromRank", "toRank", "learned", "color", "cost"]),
     reagents: table(or(get(p, "reagents"), []), ["id", "name", "need", "have", "source"]),
   })) };
+}
+
+export function alts(a: any, name: string | null = null): any {
+  if (!truthy(a)) return null;
+  const list = (a as any[]).filter((c) => !truthy(name) || matches(name!, get(c, "name")));
+  const rows = list.map((c) => ({ ...c, zone: [get(c, "zone"), get(c, "subzone")].filter(truthy).join(" - ") || null }));
+  return { characters: table(rows, ["name", "level", "class", "money", "zone", "restXp", "mails", "mailExpiresDays"]) };
 }

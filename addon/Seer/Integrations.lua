@@ -248,7 +248,8 @@ end
 
 function ns.BisWeights()
 	local api = BisApi()
-	local weights, info = api and Try(api.GetWeights)
+	if not api then return nil end
+	local weights, info = Try(api.GetWeights)
 	if type(weights) ~= "table" then return nil end
 	local out = { stats = {} }
 	for k, v in pairs(weights) do

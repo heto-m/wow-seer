@@ -134,6 +134,18 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
       [5240, 9000, 3, 52400, null], [777, null, null, 7770, null],
       [2589, 40, 0, 25890, 5], [5240, 9000, 3, 52400, 10], [159, null, null, 1590, 15],
     ]);
+    const hooked = spawnSync(LUA!, [path.join(ROOT, "test", "mock_wow.lua"), game.addonsDir(), tmp, "0"], {
+      encoding: "utf8",
+      env: { ...process.env, MOCK_ADDONS: "1" },
+    });
+    assert.equal(hooked.status, 0, hooked.stderr);
+    const h = JSON.parse(hooked.stdout);
+    assert.deepEqual(h.player.bisWeights, { spec: "Shadow", stats: { INT: 1, SPI: 0.8 }, source: "Wowhead", fromLevel: 1, toLevel: 30 });
+    assert.deepEqual(h.player.dungeonLockout, { lastHour: 5, limit: 5, last24h: 7, freeIn: 600 });
+    assert.deepEqual(h.bags[0].items.map((i: any) => i.bis ?? null), [null, 12.3, null]);
+    assert.deepEqual(h.alts.map((c: any) => [c.name, c.level, c.class, c.zone, c.mails ?? null, c.mailExpiresDays ?? null]), [
+      ["Palla", 27, "PRIEST", "Tierras Altas", null, null], ["Bank", 5, "WARRIOR", "Entrañas", 2, 3.2],
+    ]);
     const jpeg = run("jpeg");
     assert.match(jpeg, /popup SEER_PNG jpeg/);
     assert.match(jpeg, /shots 0/);

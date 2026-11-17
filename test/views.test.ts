@@ -161,3 +161,19 @@ test("prices", () => {
   ] } });
   assert.match(views.prices({ auctionator: false, items: [] }).note, /Auctionator/);
 });
+
+test("BiS gain, dungeon lockout and alts", () => {
+  const p = views.player({ name: "Palla", bisWeights: { spec: "Shadow", stats: { INT: 1 }, source: "Wowhead", fromLevel: 1, toLevel: 30 },
+    dungeonLockout: { lastHour: 5, limit: 5, last24h: 7, freeIn: 601 } });
+  assert.deepEqual(p.bis_weights, { spec: "Shadow", stats: { INT: 1 }, source: "Wowhead", levels: "1-30" });
+  assert.deepEqual(p.dungeon_lockout, { last_hour: "5/5", last_24h: 7, next_free_in_minutes: 11 });
+  const bags = views.bags({ bags: [{ size: 4, items: [{ id: 1, name: "A", bis: 2.5 }, { id: 2, name: "B" }] }] });
+  assert.deepEqual(bags.items.cols, ["id", "name", "bis"]);
+  assert.deepEqual(bags.items.rows.map((r: any[]) => r[2]), [2.5, null]);
+  assert.equal(views.bags({ bags: [{ size: 4, items: [{ id: 2, name: "B" }] }] }).items.cols.includes("bis"), false);
+  assert.equal(views.itemView({ id: 1, bis: -3 }, ["id"]).bis_gain, -3);
+  const a = views.alts([{ name: "Bank", level: 5, class: "WARRIOR", zone: "Entrañas", subzone: "Barrio", mails: 2, mailExpiresDays: 3.2 }]);
+  assert.deepEqual(a.characters.cols, ["name", "level", "class", "zone", "mails", "mailExpiresDays"]);
+  assert.deepEqual(a.characters.rows, [["Bank", 5, "WARRIOR", "Entrañas - Barrio", 2, 3.2]]);
+  assert.equal(views.alts([{ name: "Bank" }], "palla").characters.rows.length, 0);
+});

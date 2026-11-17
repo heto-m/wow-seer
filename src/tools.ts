@@ -22,6 +22,7 @@ export const SECTION_HELP: Record<string, string> = {
   fight: "the last fight from the game's damage meter",
   training: "spells to learn, from the What's Training addon",
   crafting: "profession leveling plans, from the SkillUp Forever addon",
+  alts: "the player's other characters, from the DataStore addon",
 };
 
 export const INSTRUCTIONS =
@@ -62,7 +63,10 @@ function bagSections(args: Args): string[] {
 const TOOLS: SectionTool[] = [
   {
     name: "get_character",
-    description: "Level, class, money, xp, zone and map position (x, y from 0 to 100), stats, equipped gear, talents taken, profession levels.",
+    description:
+      "Level, class, money, xp, zone and map position (x, y from 0 to 100), stats, equipped gear, talents taken, " +
+      "profession levels. With Forever Leveling BiS: the stat weights it uses for the spec and level. " +
+      "With Nova Instance Tracker: dungeons entered in the last hour against Forever's hourly limit, and when the next slot frees.",
     inputSchema: schema({ detail: { ...DETAIL, description: "summary (default): gear names only; full: gear tooltips" } }),
     sections: ["player", "equipment", "talents", "skills"],
     view: (d, a) => ({
@@ -91,7 +95,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_bags",
-    description: "Bag (or bank) contents, stacks merged, free space. With the Pawn addon, gear also shows Pawn's value and upgrade % under the player's active Pawn scale (Pawn ignores set bonuses).",
+    description: "Bag (or bank) contents, stacks merged, free space. With the Pawn addon, gear also shows Pawn's value and upgrade % under the player's active Pawn scale (Pawn ignores set bonuses), and with Forever Leveling BiS a bis column: its score gain over what is worn (negative is worse).",
     inputSchema: schema({
       where: { type: "string", enum: ["bags", "bank", "both"] },
       name: { ...STR, description: "part of the item name" },
@@ -178,6 +182,15 @@ const TOOLS: SectionTool[] = [
     inputSchema: schema({ profession: { ...STR, description: "part of the profession name" } }),
     sections: ["crafting"],
     view: (d, a) => views.crafting(d.crafting, a.profession),
+  },
+  {
+    name: "get_alts",
+    description:
+      "The player's other characters as last seen by the DataStore addon: level, class, money, where they logged out, " +
+      "rested xp, and mail waiting with days until the soonest one expires.",
+    inputSchema: schema({ name: STR }),
+    sections: ["alts"],
+    view: (d, a) => views.alts(d.alts, a.name),
   },
   {
     name: "get_merchant",

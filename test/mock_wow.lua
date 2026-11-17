@@ -188,6 +188,30 @@ if os.getenv("MOCK_PRICES") then
 	print(ns.ToJson(ns.collect.prices()))
 	os.exit(0)
 end
+if os.getenv("MOCK_ADDONS") then
+	ForeverLevelingBiS_API = {
+		version = 2,
+		GetGain = function(link) if link:find("item:5240") then return 12.345 end end,
+		GetWeights = function() return { INT = 1, SPI = 0.8, STR = 0 }, { source = "Wowhead", fromLevel = 1, toLevel = 30 } end,
+		GetSpec = function() return "Shadow" end,
+	}
+	NIT = { data = {}, hourlyLimit = 5 }
+	function NIT:getInstanceLockoutInfo() return 5, 7, time() - 3000, time() - 80000 end
+	local mails = { [1] = 29.6, [2] = 3.2 }
+	DataStore = {
+		GetCharacters = function() return { Palla = "Default.Realm.Palla", Bank = "Default.Realm.Bank" } end,
+		GetCharacterLevel = function(_, key) return key:find("Palla") and 27 or 5 end,
+		GetMoney = function(_, key) return key:find("Palla") and 123456 or 99 end,
+		GetCharacterClass = function(_, key) if key:find("Palla") then return "Sacerdote", "PRIEST" end return "Guerrero", "WARRIOR" end,
+		GetLocation = function(_, key) if key:find("Bank") then return "Entrañas", "Barrio comercial" end return "Tierras Altas" end,
+		GetRestXP = function() return 1500 end,
+		GetNumMails = function(_, key) return key:find("Bank") and 2 or 0 end,
+		GetMailExpiry = function(_, _, i) return mails[i] end,
+	}
+	local c = ns.collect
+	print(ns.ToJson({ player = c.player(), bags = c.bags(), alts = c.alts() }))
+	os.exit(0)
+end
 Fire("ADDON_LOADED", "Seer")
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD")
