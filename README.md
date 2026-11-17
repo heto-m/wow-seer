@@ -35,12 +35,14 @@ Set `WOW_DIR` if your `_forever_` folder isn't in a default place. Seer needs sc
 | `get_guide` | the step your Polestar guide is on, with quests, NPCs and coordinates |
 | `get_last_fight` | damage, healing and damage taken per group member in the last fight, from the game's damage meter |
 | `get_training` | spells to learn now and in the next levels, with cost (What's Training) |
+| `get_crafting` | profession leveling plan: next steps, recipes and reagents still needed (SkillUp Forever) |
+| `get_loot` | where items drop (dungeon, boss, drop %), or a dungeon's whole loot table (AtlasLoot) |
 | `refresh` | asks the game to resend sections now (up to about 15 s) |
 | `seer_status` | connection state, slots left, decode errors |
 
 Money is in copper.
 
-Some tools read other addons when they are installed: Auctionator (`get_prices`), Questie (quest locations), Pawn (gear values), Polestar (`get_guide`) and What's Training (`get_training`). Without them those parts are just left out.
+Some tools read other addons when they are installed: Auctionator (`get_prices`), Questie (quest locations), Pawn (gear values), Polestar (`get_guide`), What's Training (`get_training`), SkillUp Forever (`get_crafting`) and AtlasLoot (`get_loot`, read from its files). Without them those parts are just left out.
 
 The addon includes [LibDeflate](https://github.com/SafeteeWoW/LibDeflate) (zlib licence, `addon/Seer/LibDeflate-LICENSE.txt`) to compress what it sends.
 

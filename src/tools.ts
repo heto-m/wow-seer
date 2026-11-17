@@ -1,4 +1,5 @@
 import * as game from "./game.js";
+import { loadLoot } from "./loot.js";
 import { now, State } from "./server.js";
 import { VERSION, versionWarning } from "./version.js";
 import * as views from "./views.js";
@@ -20,6 +21,7 @@ export const SECTION_HELP: Record<string, string> = {
   guide: "the Polestar guide step (needs the Polestar addon)",
   fight: "the last fight from the game's damage meter",
   training: "spells to learn, from the What's Training addon",
+  crafting: "profession leveling plans, from the SkillUp Forever addon",
 };
 
 export const INSTRUCTIONS =
@@ -169,6 +171,15 @@ const TOOLS: SectionTool[] = [
     view: (d, a) => views.training(d.training, Boolean(a.available_only)),
   },
   {
+    name: "get_crafting",
+    description:
+      "Profession leveling plans from the SkillUp Forever addon: the next steps (craft, buy, train, gather) with " +
+      "counts and costs, the recipes planned and the reagents the route still needs.",
+    inputSchema: schema({ profession: { ...STR, description: "part of the profession name" } }),
+    sections: ["crafting"],
+    view: (d, a) => views.crafting(d.crafting, a.profession),
+  },
+  {
     name: "get_merchant",
     description: "The last vendor window the player opened: items and prices.",
     inputSchema: schema({ name: STR, usable_only: BOOL }),
@@ -198,6 +209,18 @@ const EXTRA_TOOLS = [
       item_ids: { type: "array", items: INT, description: "up to 200" },
       bags: { ...BOOL, description: "price every item in the bags" },
       timeout_seconds: TIMEOUT,
+    }),
+  },
+  {
+    name: "get_loot",
+    description:
+      "Dungeon and raid loot from the AtlasLoot addon's data on disk: where items drop (instance, boss, drop %), " +
+      "or every boss's loot in a dungeon. Boss, dungeon and item notes are in English; match items by ID " +
+      "(names in the game's language come from get_item).",
+    inputSchema: schema({
+      item_ids: { type: "array", items: INT, description: "where these items drop" },
+      dungeon: { ...STR, description: "part of a dungeon or raid name (English), lists its bosses and loot" },
+      name: { ...STR, description: "part of an item's English name" },
     }),
   },
   {
@@ -312,6 +335,11 @@ export async function callTool(state: State, name: string, args: Args): Promise<
     if (!(await state.wait(() => state.answered(req), timeout))) return { error: "timed out waiting for the game" };
     const { data, meta } = gather(state, ["prices"]);
     return { ...views.prices(data.prices), ...meta };
+  }
+  if (name === "get_loot") {
+    const data = loadLoot();
+    if (!data) return { error: "AtlasLoot (AtlasLootClassic_DungeonsAndRaids) is not installed" };
+    return views.loot(data, args.item_ids, args.dungeon, args.name);
   }
   if (name === "refresh") {
     const names = ((args.sections as string[]) || ["player", "equipment", "bags", "quests"]).filter((s) => s in SECTION_HELP);

@@ -450,5 +450,5 @@ end
 
 ns.SECTIONS = {
 	"player", "equipment", "bags", "bank", "quests", "talents", "skills",
-	"trainer", "profession", "merchant", "auction", "items", "prices", "guide", "fight", "training",
+	"trainer", "profession", "merchant", "auction", "items", "prices", "guide", "fight", "training", "crafting",
 }

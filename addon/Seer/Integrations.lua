@@ -233,7 +233,46 @@ function collect.training()
 	return out
 end
 
+local function SkillUpApi()
+	local api = SkillUpForever and SkillUpForever.API
+	return type(api) == "table" and api.version == 1 and api or nil
+end
+
+local function Pick(row, keys)
+	local out = {}
+	for _, k in ipairs(keys) do out[k] = row[k] end
+	return out
+end
+
+function collect.crafting()
+	local api = SkillUpApi()
+	local list = api and Try(api.Professions, { steps = 5, recipes = 8 })
+	if type(list) ~= "table" then return nil end
+	local out = {}
+	for _, p in ipairs(list) do
+		local entry = { name = p.name, rank = p.rank, maxRank = p.maxRank, steps = {}, recipes = {}, reagents = {} }
+		for _, st in ipairs(p.steps or {}) do
+			entry.steps[#entry.steps + 1] = Pick(st, { "kind", "text", "detail", "count", "cost" })
+		end
+		for _, r in ipairs(p.recipes or {}) do
+			entry.recipes[#entry.recipes + 1] = Pick(r, { "name", "count", "fromRank", "toRank", "learned", "color", "cost" })
+		end
+		for _, r in ipairs(p.reagents or {}) do
+			local name = r.itemID and Try(C_Item.GetItemNameByID, r.itemID)
+			entry.reagents[#entry.reagents + 1] = { id = r.itemID, name = name, need = r.need, have = r.have, source = r.source }
+		end
+		out[#out + 1] = entry
+	end
+	return out
+end
+
 function ns.HookAddons(mark)
+	local skillUp = SkillUpApi()
+	if skillUp and skillUp.Subscribe then
+		pcall(skillUp.Subscribe, function(changes)
+			if type(changes) == "table" and changes.professions then mark("crafting") end
+		end)
+	end
 	if Polestar and Polestar.On then
 		for _, msg in ipairs({ "STEP_CHANGED", "STEP_UPDATED", "GUIDE_CHANGED", "WAYPOINT_CHANGED" }) do
 			pcall(Polestar.On, msg, function() mark("guide") end)

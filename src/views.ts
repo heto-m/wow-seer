@@ -1,3 +1,6 @@
+import type { LootData } from "./loot.js";
+import { dropRate } from "./loot.js";
+
 export const SOULBOUND = new Set(["Soulbound", "Ligado", "Lié", "Seelengebunden", "Vincolato", "Vinculado"]);
 const SET_HEADER = /^(.+) \((\p{Nd}+\/\p{Nd}+)\)$/u;
 const DURABILITY = /^\P{Nd}+ (\p{Nd}+) \/ (\p{Nd}+)$/u;
@@ -556,4 +559,54 @@ export function training(t: any, availableOnly = false): any {
   if (!truthy(t)) return null;
   const rows = (t as any[]).filter((s) => !availableOnly || get(s, "status") === "available");
   return { spells: table(rows, ["name", "rank", "level", "cost", "status"]) };
+}
+
+const MAX_SOURCES = 40;
+
+function levels(l: number[] | null): string | null {
+  return l && l.length ? (l.length >= 3 ? `${l[1]}-${l[2]} (enter ${l[0]})` : l.join("-")) : null;
+}
+
+export function loot(data: LootData, itemIds: unknown, dungeon: unknown, name: unknown): any {
+  const ids = new Set(((Array.isArray(itemIds) ? itemIds : []) as unknown[]).map(Number).filter((n) => n > 0));
+  const needle = typeof name === "string" && name.trim() ? name.trim().toLowerCase() : null;
+  const place = typeof dungeon === "string" && dungeon.trim() ? dungeon.trim().toLowerCase() : null;
+  if (!ids.size && !needle && !place) return { error: "give item_ids, name or dungeon" };
+  if (place && !ids.size && !needle) {
+    const found = data.instances.filter((i) => `${i.name} ${i.key}`.toLowerCase().includes(place));
+    if (!found.length) return { error: `no dungeon matches ${dungeon}`, dungeons: data.instances.map((i) => i.name) };
+    return { dungeons: found.slice(0, 3).map((i) => ({
+      name: i.name, levels: levels(i.levels),
+      bosses: i.bosses.map((b) => ({ boss: b.name, items: table(b.items.map((it) => ({
+        id: it.id, note: it.note, drop: dropRate(data, b, it.id) })), ["id", "note", "drop"]) })),
+    })) };
+  }
+  const rows: any[] = [];
+  for (const i of data.instances) {
+    if (place && !`${i.name} ${i.key}`.toLowerCase().includes(place)) continue;
+    for (const b of i.bosses) {
+      for (const it of b.items) {
+        if (ids.has(it.id) || (needle && (it.note ?? "").toLowerCase().includes(needle))) {
+          rows.push({ id: it.id, note: it.note, dungeon: i.name, levels: levels(i.levels), boss: b.name,
+            drop: dropRate(data, b, it.id) });
+        }
+      }
+    }
+  }
+  const out: any = { sources: table(rows.slice(0, MAX_SOURCES), ["id", "note", "dungeon", "levels", "boss", "drop"]) };
+  if (rows.length > MAX_SOURCES) out.more = rows.length - MAX_SOURCES;
+  const missing = [...ids].filter((id) => !rows.some((r) => r.id === id));
+  if (missing.length) out.not_in_atlasloot = missing;
+  return out;
+}
+
+export function crafting(c: any, profession: string | null = null): any {
+  if (!truthy(c)) return null;
+  const list = (c as any[]).filter((p) => !truthy(profession) || matches(profession!, get(p, "name")));
+  return { professions: list.map((p) => ({
+    name: get(p, "name"), skill: `${pyStr(get(p, "rank"))}/${pyStr(get(p, "maxRank"))}`,
+    steps: table(or(get(p, "steps"), []), ["kind", "text", "detail", "count", "cost"]),
+    recipes: table(or(get(p, "recipes"), []), ["name", "count", "fromRank", "toRank", "learned", "color", "cost"]),
+    reagents: table(or(get(p, "reagents"), []), ["id", "name", "need", "have", "source"]),
+  })) };
 }
