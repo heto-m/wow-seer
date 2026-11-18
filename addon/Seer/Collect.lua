@@ -259,11 +259,15 @@ function collect.skills()
 	return out
 end
 
+local SERVICE_TYPES = { available = true, unavailable = true, used = true, header = true }
+
 function collect.trainer()
 	if not ns.trainerOpen then return nil end
 	local out = { npc = UnitName("npc"), services = {} }
 	for i = 1, Try(GetNumTrainerServices) or 0 do
 		local name, sub, kind = Try(GetTrainerServiceInfo, i)
+		-- Forever returns name, type, icon; classic returns name, rank, type.
+		if SERVICE_TYPES[sub] then sub, kind = nil, sub end
 		if name and kind ~= "header" then
 			local skill, skillRank = Try(GetTrainerServiceSkillReq, i)
 			out.services[#out.services + 1] = {
