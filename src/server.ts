@@ -6,7 +6,7 @@ import zlib from "node:zlib";
 import { Assembler, decode, NotSeer } from "./frame.js";
 import * as game from "./game.js";
 import { LeaderLock, readJson, sharedDir, writeJson } from "./shared.js";
-import { VERSION, versionWarning } from "./version.js";
+import { compareVersions, VERSION, versionWarning } from "./version.js";
 
 const SCAN_EVERY = 300;
 const YIELD_COOLDOWN = 10_000;
@@ -99,6 +99,11 @@ export class State extends EventEmitter {
     if (warning && !this.warned.has(warning)) {
       this.warned.add(warning);
       log(warning);
+    }
+    const update = `update ${msg.version}`;
+    if (typeof msg.version === "string" && compareVersions(VERSION, msg.version) === 1 && !this.warned.has(update)) {
+      this.warned.add(update);
+      this.request("update", { version: VERSION });
     }
     this.changed();
     this.emit("message", msg);

@@ -218,6 +218,21 @@ Fire("PLAYER_ENTERING_WORLD")
 
 if os.getenv("MOCK_SEND") then C_Timer.After(10, function() SlashCmdList.SEER("send") end) end
 
+local sent = {}
+if os.getenv("MOCK_COMMS") then
+	C_ChatInfo = { SendAddonMessage = function(prefix, text, channel) sent[#sent + 1] = prefix .. " " .. text .. " " .. channel end }
+	function IsInGuild() return true end
+	function IsInGroup() return true end
+	function IsInRaid() return false end
+	Fire("GROUP_ROSTER_UPDATE")
+	Fire("GROUP_ROSTER_UPDATE")
+	Fire("CHAT_MSG_ADDON", "Seer", "v:0.4.0", "PARTY", "Viejo-Realm")
+	Fire("CHAT_MSG_ADDON", "Seer", "v:9.0.0", "PARTY", "Testera-Realm")
+	Fire("CHAT_MSG_ADDON", "Otro", "v:9.0.0", "PARTY", "Nuevo-Realm")
+	Fire("CHAT_MSG_ADDON", "Seer", "v:0.9.0", "PARTY", "Nuevo-Realm")
+	Fire("CHAT_MSG_ADDON", "Seer", "v:1.0.0", "GUILD", "Otro-Realm")
+end
+
 local stop = now + SECONDS
 while now < stop do
 	now = now + 0.016
@@ -239,3 +254,4 @@ while now < stop do
 	end
 end
 print("shots " .. shots)
+for _, line in ipairs(sent) do print("sent " .. line) end

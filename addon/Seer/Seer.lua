@@ -34,6 +34,59 @@ local function Alive()
 	return serverSeen ~= nil and GetTime() - serverSeen < ALIVE_FOR
 end
 
+local COMM_PREFIX = "Seer"
+local COMM_GAP = 60
+local commSent = {}
+
+local function VersionNumbers(v)
+	local out = {}
+	for n in tostring(v):gmatch("%d+") do out[#out + 1] = tonumber(n) end
+	return out
+end
+
+local function IsNewer(v, than)
+	local a, b = VersionNumbers(v), VersionNumbers(than)
+	if #a == 0 or #b == 0 then return false end
+	for i = 1, math.max(#a, #b) do
+		local x, y = a[i] or 0, b[i] or 0
+		if x ~= y then return x > y end
+	end
+	return false
+end
+
+local function NewerVersion(v)
+	if warned.update or not VERSION or not IsNewer(v, VERSION) then return end
+	warned.update = true
+	Say(Red(L.UPDATE_AVAILABLE), v)
+end
+
+local function SendVersion(channel)
+	if GetTime() - (commSent[channel] or -1000) < COMM_GAP then return end
+	commSent[channel] = GetTime()
+	pcall(C_ChatInfo.SendAddonMessage, COMM_PREFIX, "v:" .. VERSION, channel)
+end
+
+local function ShareVersion()
+	if not VERSION or not C_ChatInfo or InCombatLockdown() then return end
+	if IsInGuild and IsInGuild() then SendVersion("GUILD") end
+	if UnitInBattleground and UnitInBattleground("player") then return end
+	if IsInGroup and LE_PARTY_CATEGORY_INSTANCE and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+		SendVersion("INSTANCE_CHAT")
+	elseif IsInRaid and IsInRaid() then
+		SendVersion("RAID")
+	elseif IsInGroup and IsInGroup() then
+		SendVersion("PARTY")
+	end
+end
+
+local function OnAddonMessage(prefix, text, sender)
+	if prefix ~= COMM_PREFIX or type(text) ~= "string" then return end
+	local me = UnitName("player")
+	if sender == me or (type(sender) == "string" and sender:match("^([^-]+)") == me) then return end
+	local v = text:match("^v:([%d%.]+)$")
+	if v then NewerVersion(v) end
+end
+
 local GetCVarValue = C_CVar and C_CVar.GetCVar or GetCVar
 local SetCVarValue = C_CVar and C_CVar.SetCVar or SetCVar
 
@@ -106,6 +159,8 @@ local function HandleRequest(req)
 	elseif req.kind == "prices" then
 		ns.wantedPrices = { items = type(req.items) == "table" and req.items or {}, bags = req.bags == true }
 		dirty.prices = -1000
+	elseif req.kind == "update" and type(req.version) == "string" then
+		NewerVersion(req.version)
 	elseif req.kind == "config" and type(req.cell) == "number" and req.cell >= 1 and req.cell <= 4 then
 		ns.Strip.cell = req.cell
 		db.cell = req.cell
@@ -306,7 +361,7 @@ local function OnAuction(event, arg)
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event, arg1, arg2)
+events:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
 	local ok, err = pcall(function()
 		if event == "ADDON_LOADED" then
 			if arg1 ~= ADDON then return end
@@ -323,6 +378,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
 			pcall(ns.HookAddons, Mark)
 		elseif event == "PLAYER_ENTERING_WORLD" then
 			for _, s in ipairs(ALWAYS) do Mark(s) end
+			C_Timer.After(10, ShareVersion)
 			C_Timer.After(8, function() if not loading then worldReady = true end end)
 		elseif event == "LOADING_SCREEN_ENABLED" then
 			worldReady, loading = false, true
@@ -342,6 +398,10 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
 				warned.blocked = true
 				Say(L.BLOCKED, event .. " " .. tostring(arg2))
 			end
+		elseif event == "CHAT_MSG_ADDON" then
+			OnAddonMessage(arg1, arg2, arg4)
+		elseif event == "GROUP_ROSTER_UPDATE" then
+			C_Timer.After(5, ShareVersion)
 		elseif OPEN[event] then
 			local o = OPEN[event]
 			ns[o[1]] = o[2]
@@ -361,10 +421,11 @@ end)
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT",
 	"SCREENSHOT_SUCCEEDED", "SCREENSHOT_FAILED", "LOADING_SCREEN_ENABLED", "LOADING_SCREEN_DISABLED", "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN",
 	"AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", "AUCTION_HOUSE_BROWSE_RESULTS_ADDED", "COMMODITY_SEARCH_RESULTS_UPDATED", "ITEM_SEARCH_RESULTS_UPDATED",
-	"GET_ITEM_INFO_RECEIVED", "ITEM_KEY_ITEM_INFO_RECEIVED" }) do
+	"GET_ITEM_INFO_RECEIVED", "ITEM_KEY_ITEM_INFO_RECEIVED", "CHAT_MSG_ADDON", "GROUP_ROSTER_UPDATE" }) do
 	pcall(events.RegisterEvent, events, e)
 end
 for e in pairs(EVENTS) do pcall(events.RegisterEvent, events, e) end
+if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then pcall(C_ChatInfo.RegisterAddonMessagePrefix, COMM_PREFIX) end
 for e in pairs(OPEN) do pcall(events.RegisterEvent, events, e) end
 
 local function Test()
