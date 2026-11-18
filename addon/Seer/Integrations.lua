@@ -166,8 +166,12 @@ function collect.guide()
 	local view = index and Try(engine.GetStepView, index)
 	if type(view) ~= "table" then return nil end
 	local guide = Try(engine.GetGuide)
+	local done, doneOf = Try(engine.GetProgress)
 	local out = {
-		guide = guide and guide.id, step = index, steps = Try(engine.GetStepCount),
+		guide = guide and guide.id,
+		step = engine.StepNumber and Try(engine.StepNumber, index) or index,
+		steps = engine.StepTotal and Try(engine.StepTotal) or Try(engine.GetStepCount),
+		done = done, doneOf = doneOf,
 		title = Clean(view.title), note = Clean(view.note), goals = {},
 	}
 	for _, g in ipairs(view.goals or {}) do

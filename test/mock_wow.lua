@@ -213,8 +213,17 @@ if os.getenv("MOCK_ADDONS") then
 	function GetTrainerServiceInfo(i) return unpack(services[i]) end
 	function GetTrainerServiceCost() return 900 end
 	ns.trainerOpen = true
+	Polestar = { Engine = {
+		GetStepIndex = function() return 44 end,
+		GetStepView = function() return { title = "Altopenumbra", goals = {} } end,
+		GetGuide = function() return { id = "forever/horde/07-ashenvale" } end,
+		GetStepCount = function() return 80 end,
+		StepNumber = function(i) return i - 6, false end,
+		StepTotal = function() return 72 end,
+		GetProgress = function() return 40, 59 end,
+	} }
 	local c = ns.collect
-	print(ns.ToJson({ player = c.player(), bags = c.bags(), alts = c.alts(), trainer = c.trainer() }))
+	print(ns.ToJson({ player = c.player(), bags = c.bags(), alts = c.alts(), trainer = c.trainer(), guide = c.guide() }))
 	os.exit(0)
 end
 Fire("ADDON_LOADED", "Seer")

@@ -172,3 +172,16 @@ test("the server tells an older addon about the update once", () => {
     process.stderr.write = write;
   }
 });
+
+test("multi-section tools give each section's age", async () => {
+  const state = new State();
+  const t = Date.now() / 1000;
+  state.apply({ msg: 1, t: t - 3600, sections: { equipment: [], talents: {}, skills: [] } });
+  state.apply({ msg: 2, t, sections: { player: { level: 28 } } });
+  const r = await ask({ id: 40, method: "tools/call", params: { _meta: MODERN, name: "get_character", arguments: {} } }, state);
+  const ages = JSON.parse(r.result.content[0].text).age_seconds;
+  assert.ok(ages.player <= 1);
+  assert.ok(ages.equipment >= 3599);
+  const one = await ask({ id: 41, method: "tools/call", params: { _meta: MODERN, name: "get_equipment", arguments: {} } }, state);
+  assert.equal(typeof JSON.parse(one.result.content[0].text).age_seconds, "number");
+});

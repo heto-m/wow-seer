@@ -177,3 +177,9 @@ test("BiS gain, dungeon lockout and alts", () => {
   assert.deepEqual(a.characters.rows, [["Bank", 5, "WARRIOR", "Entrañas - Barrio", 2, 3.2]]);
   assert.equal(views.alts([{ name: "Bank" }], "palla").characters.rows.length, 0);
 });
+
+test("guide numbers steps like Polestar's window", () => {
+  const g = views.guide({ guide: "x", step: 38, steps: 72, done: 40, doneOf: 59, goals: [] });
+  assert.equal(g.step, "38/72");
+  assert.equal(g.steps_done, "40/59");
+});
