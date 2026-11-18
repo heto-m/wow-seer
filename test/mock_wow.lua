@@ -208,8 +208,13 @@ if os.getenv("MOCK_ADDONS") then
 		GetNumMails = function(_, key) return key:find("Bank") and 2 or 0 end,
 		GetMailExpiry = function(_, _, i) return mails[i] end,
 	}
+	local services = { { "Venda de lana pesada", "available", 133687 }, { "Venda de lana", "Rango 1", "used" }, { "Primeros auxilios", "header" } }
+	function GetNumTrainerServices() return #services end
+	function GetTrainerServiceInfo(i) return unpack(services[i]) end
+	function GetTrainerServiceCost() return 900 end
+	ns.trainerOpen = true
 	local c = ns.collect
-	print(ns.ToJson({ player = c.player(), bags = c.bags(), alts = c.alts() }))
+	print(ns.ToJson({ player = c.player(), bags = c.bags(), alts = c.alts(), trainer = c.trainer() }))
 	os.exit(0)
 end
 Fire("ADDON_LOADED", "Seer")

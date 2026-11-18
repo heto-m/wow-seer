@@ -1,6 +1,6 @@
 {
   "name": "wow-seer",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "MCP server that lets any AI read your WoW: Forever game state through the Seer addon",
   "license": "MIT",
   "author": "heto-m",

@@ -141,6 +141,9 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
     assert.equal(hooked.status, 0, hooked.stderr);
     const h = JSON.parse(hooked.stdout);
     assert.deepEqual(h.player.bisWeights, { spec: "Shadow", stats: { INT: 1, SPI: 0.8 }, source: "Wowhead", fromLevel: 1, toLevel: 30 });
+    assert.deepEqual(h.trainer.services.map((s: any) => [s.name, s.rank ?? null, s.status]), [
+      ["Venda de lana pesada", null, "available"], ["Venda de lana", "Rango 1", "used"],
+    ]);
     assert.deepEqual(h.player.dungeonLockout, { lastHour: 5, limit: 5, last24h: 7, freeIn: 600 });
     assert.deepEqual(h.bags[0].items.map((i: any) => i.bis ?? null), [null, 12.3, null]);
     assert.deepEqual(h.alts.map((c: any) => [c.name, c.level, c.class, c.zone, c.mails ?? null, c.mailExpiresDays ?? null]), [
