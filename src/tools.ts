@@ -72,7 +72,8 @@ export function diagnose(state: State, waited = false): string | null {
 
 export const INSTRUCTIONS =
   "Read-only access to the player's live WoW: Forever state, pushed by the Seer addon when it changes. " +
-  "age_seconds says how old the data is. Money and prices are in copper (10000 = 1 gold). " +
+  "age_seconds says when each section was last sent. Sections are sent only when they change, so an old age on " +
+  "gear, talents or skills usually means nothing changed; call refresh to confirm. Money and prices are in copper (10000 = 1 gold). " +
   "quality: 0 poor, 1 common, 2 uncommon, 3 rare, 4 epic. Lists come as {cols, rows}. " +
   "Text is in the game client's language: name items, zones and NPCs as the client does. " +
   "Seer cannot act in the game or search the auction house: trainer, vendor, profession, bank and auction data " +
@@ -204,7 +205,7 @@ const TOOLS: SectionTool[] = [
   },
   {
     name: "get_guide",
-    description: "The step the player's Polestar leveling guide is on: what to do, quests, NPCs and map coordinates.",
+    description: "The step the player's Polestar leveling guide is on: what to do, quests, NPCs and map coordinates. step is numbered as in Polestar's window (hidden steps left out); steps_done is its progress count.",
     inputSchema: schema(),
     sections: ["guide"],
     view: (d) => views.guide(d.guide),
@@ -314,7 +315,7 @@ export class UnknownTool extends Error {}
 function gather(state: State, names: string[]): { data: Data; meta: Data } {
   const t = now();
   const data: Data = {};
-  const ages: number[] = [];
+  const ages: Record<string, number> = {};
   let missing: string[] = [];
   let saved: Record<string, any> | null = null;
   let savedAt: number | null = null;
@@ -323,7 +324,7 @@ function gather(state: State, names: string[]): { data: Data; meta: Data } {
     const entry = state.sections[name];
     if (entry) {
       data[name] = entry.data;
-      ages.push(Math.max(0, Math.floor(t - entry.game_time)));
+      ages[name] = Math.max(0, Math.floor(t - entry.game_time));
       continue;
     }
     if (saved === null) {
@@ -336,14 +337,16 @@ function gather(state: State, names: string[]): { data: Data; meta: Data } {
     if (saved && name in saved) {
       data[name] = saved[name];
       usedSaved = true;
-      if (savedAt) ages.push(Math.floor(t - savedAt));
+      if (savedAt) ages[name] = Math.floor(t - savedAt);
     } else {
       data[name] = null;
       missing.push(name);
     }
   }
   const meta: Data = {};
-  if (ages.length) meta.age_seconds = Math.max(...ages);
+  const aged = Object.values(ages);
+  if (aged.length === 1) meta.age_seconds = aged[0];
+  else if (aged.length) meta.age_seconds = ages;
   if (usedSaved) meta.source = "saved at last logout or /reload";
   if (names.length !== 1 || names[0] !== "bank") missing = missing.filter((n) => n !== "bank");
   if (missing.length) {

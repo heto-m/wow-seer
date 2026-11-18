@@ -144,6 +144,7 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
     assert.deepEqual(h.trainer.services.map((s: any) => [s.name, s.rank ?? null, s.status]), [
       ["Venda de lana pesada", null, "available"], ["Venda de lana", "Rango 1", "used"],
     ]);
+    assert.deepEqual([h.guide.step, h.guide.steps, h.guide.done, h.guide.doneOf], [38, 72, 40, 59]);
     assert.deepEqual(h.player.dungeonLockout, { lastHour: 5, limit: 5, last24h: 7, freeIn: 600 });
     assert.deepEqual(h.bags[0].items.map((i: any) => i.bis ?? null), [null, 12.3, null]);
     assert.deepEqual(h.alts.map((c: any) => [c.name, c.level, c.class, c.zone, c.mails ?? null, c.mailExpiresDays ?? null]), [

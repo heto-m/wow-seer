@@ -556,6 +556,7 @@ export function guide(g: any): any {
   });
   const out: any = { guide: get(g, "guide"), step: `${pyStr(get(g, "step"))}/${pyStr(get(g, "steps"))}`,
     title: get(g, "title"), note: get(g, "note"), goals };
+  if (truthy(get(g, "doneOf"))) out.steps_done = `${pyStr(get(g, "done"))}/${pyStr(g.doneOf)}`;
   const wp = get(g, "waypoint");
   if (truthy(wp)) out.waypoint = { ...point(wp), label: get(wp, "label") };
   return out;
