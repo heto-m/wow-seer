@@ -223,6 +223,17 @@ local function Compress(text)
 	return text
 end
 
+local Clock = debugprofilestop or function() return GetTime() * 1000 end
+
+-- Splices the per-section JSON already kept in db.saved instead of encoding every section twice.
+local function Message(envelope, list)
+	local parts = {}
+	for _, s in ipairs(list) do
+		if db.saved[s] then parts[#parts + 1] = ns.ToJson(s) .. ":" .. db.saved[s] end
+	end
+	return ns.ToJson(envelope):sub(1, -2) .. ',"sections":{' .. table.concat(parts, ",") .. "}}"
+end
+
 local function Push(force)
 	local now = GetTime()
 	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
@@ -230,30 +241,43 @@ local function Push(force)
 	if not PngReady() then return end
 	local list = Ready(now)
 	if #list == 0 and not dirty.acks then return end
-	local sections = {}
+	local cost = { collect = 0, json = 0, slowest = 0 }
+	local sections, sending = {}, {}
 	for _, s in ipairs(list) do
+		local at = Clock()
 		local data = Collect(s)
+		local took = Clock() - at
+		cost.collect = cost.collect + took
+		if took > cost.slowest then cost.slowest, cost.slowestName = took, s end
 		if data ~= nil then
-			sections[s] = data
+			at = Clock()
+			sections[s] = true
+			sending[#sending + 1] = s
 			db.saved[s] = ns.ToJson(data)
+			cost.json = cost.json + Clock() - at
 		end
 	end
 	msgId = (db.msgId or 0) % 65535 + 1
 	db.msgId = msgId
 	local sent = acks
 	acks = {}
-	local text = ns.ToJson({
+	local at = Clock()
+	local text = Message({
 		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
-		build = (GetBuildInfo()), version = VERSION, acks = sent, sections = sections,
-	})
+		build = (GetBuildInfo()), version = VERSION, acks = sent,
+	}, sending)
+	cost.json = cost.json + Clock() - at
+	cost.raw = #text
+	at = Clock()
 	text = Compress(text)
+	cost.compress = Clock() - at
 	local started = GetTime()
 	for _, s in ipairs(list) do dirty[s] = nil end
 	dirty.acks = nil
 	lastPush = now
 	local ok = ns.Strip.Send(msgId, text, function(success, why)
 		if success then
-			ns.lastSent = { bytes = #text, at = GetTime(), sections = list }
+			ns.lastSent = { bytes = #text, at = GetTime(), sections = list, cost = cost, strip = ns.Strip.lastStats }
 			unconfirmed[msgId] = { at = GetTime(), sections = list }
 			if sections.items then wipe(ns.wantedItems) end
 			if sections.prices then ns.wantedPrices = nil end
@@ -462,6 +486,9 @@ local function Status()
 	end
 	if ns.lastSent then
 		Say(L.LAST_SENT, ns.lastSent.bytes, GetTime() - ns.lastSent.at, table.concat(ns.lastSent.sections, ", "))
+		local c, st = ns.lastSent.cost, ns.lastSent.strip or {}
+		Say(L.COST, c.collect, c.slowestName or "-", c.slowest, c.json, c.compress, c.raw, ns.lastSent.bytes,
+			st.build or 0, st.shots or 0, st.hitch or 0, st.usual or 0)
 	end
 end
 

@@ -133,6 +133,17 @@ end
 
 local driver = CreateFrame("Frame")
 driver:Hide()
+local Clock = debugprofilestop or function() return GetTime() * 1000 end
+
+-- Runs past Finish: the encode stall lands in the frames after Screenshot(), sometimes after the event.
+local watch = CreateFrame("Frame")
+watch:Hide()
+watch:SetScript("OnUpdate", function(self, elapsed)
+	local st = self.stats
+	st.hitch = math.max(st.hitch or 0, elapsed * 1000)
+	self.frames = self.frames + 1
+	if self.frames >= 5 then self:Hide() end
+end)
 
 local function Debug(text)
 	if ns.debug then print(string.format("|cff9b7bffSeer|r %.2f %s", GetTime(), text)) end
@@ -162,15 +173,18 @@ local function StartPart()
 	driver:Show()
 end
 
-driver:SetScript("OnUpdate", function()
+driver:SetScript("OnUpdate", function(_, elapsed)
 	local ok, err = pcall(function()
 		if not job then driver:Hide() return end
+		job.lastElapsed = elapsed
 		if GetTime() - job.started > TIMEOUT then Finish(false, "timeout") return end
 		if job.phase ~= "taken" and InCombatLockdown() then Finish(false, "combat") return end
 		local p = job.parts[job.index]
 		if job.phase == "build" then
 			local to = math.min(p.groups, p.built + BUILD_PER_FRAME / 4)
+			local at = Clock()
 			BuildPayload(p, p.built + 1, to)
+			job.stats.build = job.stats.build + Clock() - at
 			p.built = to
 			if to >= p.groups then
 				frame:Show()
@@ -183,7 +197,12 @@ driver:SetScript("OnUpdate", function()
 			job.waited = job.waited + 1
 		elseif job.phase == "show" then
 			hideStatusUntil = GetTime() + 3
+			local st = job.stats
+			st.usual = math.max(st.usual or 0, (job.lastElapsed or 0) * 1000)
+			st.shots = st.shots + 1
 			Screenshot()
+			watch.stats, watch.frames = st, 0
+			watch:Show()
 			Debug("screenshot called")
 			job.phase = "taken"
 			job.hideNext = true
@@ -223,7 +242,8 @@ function Strip.Send(msg, text, done)
 		parts[k] = { msg = msg % 65536, part = k, parts = n, cols = cols, cell = Strip.cell,
 			data = text:sub((k - 1) * per + 1, k * per) }
 	end
-	job = { parts = parts, index = 1, done = done }
+	job = { parts = parts, index = 1, done = done, stats = { build = 0, shots = 0 } }
+	Strip.lastStats = job.stats
 	StartPart()
 	return true
 end

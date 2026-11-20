@@ -230,7 +230,10 @@ Fire("ADDON_LOADED", "Seer")
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD")
 
-if os.getenv("MOCK_SEND") then C_Timer.After(10, function() SlashCmdList.SEER("send") end) end
+if os.getenv("MOCK_SEND") then
+	C_Timer.After(10, function() SlashCmdList.SEER("send") end)
+	C_Timer.After(18, function() SlashCmdList.SEER("status") end)
+end
 
 local sent = {}
 if os.getenv("MOCK_COMMS") then

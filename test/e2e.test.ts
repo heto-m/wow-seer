@@ -166,6 +166,7 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
     const png = run("png");
     assert.doesNotMatch(png, /popup/);
     assert.match(png, /shots [1-9]/);
+    assert.match(png, /Coste: recogida [\d.]+ ms .* 1 capturas, fotograma tras la captura 16 ms/);
   } finally {
     delete process.env.WOW_DIR;
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
