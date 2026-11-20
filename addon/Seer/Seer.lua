@@ -220,9 +220,11 @@ end
 local COMPRESS_FROM = 200
 
 -- "Z" marks raw deflate for the server; JSON never starts with it.
-local function Compress(text)
+-- Deflate costs the game a few ms even on small text, so captured strips skip it until a message needs a second part.
+local function Compress(text, captured)
 	local lib = ns.LibDeflate or (LibStub and LibStub("LibDeflate", true))
-	if not lib or #text < COMPRESS_FROM then return text end
+	local from = captured and ns.Strip.Capacity() or COMPRESS_FROM
+	if not lib or #text < from then return text end
 	local ok, packed = pcall(lib.CompressDeflate, lib, text, { level = 1 })
 	if ok and type(packed) == "string" and #packed + 1 < #text then return "Z" .. packed end
 	return text
@@ -239,69 +241,109 @@ local function Message(envelope, list)
 	return ns.ToJson(envelope):sub(1, -2) .. ',"sections":{' .. table.concat(parts, ",") .. "}}"
 end
 
-local function Push(force)
-	local now = GetTime()
-	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
-	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
-	if not ns.Strip.Capturing() and not PngReady() then return end
-	local list = Ready(now)
-	if #list == 0 and not dirty.acks then return end
-	local cost = { collect = 0, json = 0, slowest = 0 }
-	local sections, sending = {}, {}
+local function Requeue(list, sent, at)
 	for _, s in ipairs(list) do
-		local at = Clock()
-		local data = Collect(s)
-		local took = Clock() - at
-		cost.collect = cost.collect + took
-		if took > cost.slowest then cost.slowest, cost.slowestName = took, s end
-		if data ~= nil then
-			at = Clock()
-			sections[s] = true
-			sending[#sending + 1] = s
-			db.saved[s] = ns.ToJson(data)
-			cost.json = cost.json + Clock() - at
-		end
+		if not dirty[s] then dirty[s] = at end
 	end
+	for _, id in ipairs(sent or {}) do acks[#acks + 1] = id end
+end
+
+local function Send(st)
+	local cost, list, sections = st.cost, st.list, st.sections
 	msgId = (db.msgId or 0) % 65535 + 1
 	db.msgId = msgId
 	local sent = acks
 	acks = {}
+	dirty.acks = nil
 	local at = Clock()
 	local text = Message({
 		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
 		build = (GetBuildInfo()), version = VERSION, acks = sent, capture = ns.Strip.capture,
-	}, sending)
+	}, st.sending)
 	cost.json = cost.json + Clock() - at
 	cost.raw = #text
 	at = Clock()
-	text = Compress(text)
+	text = Compress(text, st.captured)
 	cost.compress = Clock() - at
-	local started = GetTime()
-	local captured = ns.Strip.Capturing()
-	for _, s in ipairs(list) do dirty[s] = nil end
-	dirty.acks = nil
-	lastPush = now
-	local ok = ns.Strip.Send(msgId, text, function(success, why)
+	local id = msgId
+	local ok = ns.Strip.Send(id, text, function(success, why)
 		if success then
 			ns.lastSent = { bytes = #text, at = GetTime(), sections = list, cost = cost, strip = ns.Strip.lastStats }
-			unconfirmed[msgId] = { at = GetTime(), sections = list, captured = captured }
+			unconfirmed[id] = { at = GetTime(), sections = list, captured = st.captured }
 			if sections.items then wipe(ns.wantedItems) end
 			if sections.prices then ns.wantedPrices = nil end
 			return
 		end
-		for _, s in ipairs(list) do
-			if not dirty[s] then dirty[s] = started end
-		end
-		for _, id in ipairs(sent) do acks[#acks + 1] = id end
+		Requeue(list, sent, st.started)
 		if why ~= "combat" and not warned[why] then
 			warned[why] = true
 			Say(L.SEND_FAILED, tostring(why))
 		end
 	end)
+	if not ok then Requeue(list, sent, st.started) end
+end
+
+-- One section per frame, then the message: a full send no longer lands on a single frame.
+local stage
+local stager = CreateFrame("Frame")
+stager:Hide()
+stager:SetScript("OnUpdate", function(self)
+	local st = stage
+	local ok, err = pcall(function()
+		if InCombatLockdown() then
+			stage = nil
+			self:Hide()
+			Requeue(st.done, nil, st.started)
+			return
+		end
+		local s = st.list[st.i]
+		if not s then
+			stage = nil
+			self:Hide()
+			Send(st)
+			return
+		end
+		st.i = st.i + 1
+		dirty[s] = nil
+		st.done[#st.done + 1] = s
+		local at = Clock()
+		local data = Collect(s)
+		local took = Clock() - at
+		st.cost.collect = st.cost.collect + took
+		if took > st.cost.slowest then st.cost.slowest, st.cost.slowestName = took, s end
+		if data ~= nil then
+			at = Clock()
+			st.sections[s] = true
+			st.sending[#st.sending + 1] = s
+			db.saved[s] = ns.ToJson(data)
+			st.cost.json = st.cost.json + Clock() - at
+		end
+	end)
 	if not ok then
-		for _, s in ipairs(list) do dirty[s] = started end
-		for _, id in ipairs(sent) do acks[#acks + 1] = id end
+		stage = nil
+		self:Hide()
+		if st then Requeue(st.done, nil, st.started) end
+		if not warned.stage then
+			warned.stage = true
+			Say(Red(L.ERROR) .. " " .. tostring(err))
+		end
 	end
+end)
+
+local function Push(force)
+	local now = GetTime()
+	if stage or ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
+	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
+	local captured = ns.Strip.Capturing()
+	if not captured and not PngReady() then return end
+	local list = Ready(now)
+	if #list == 0 and not dirty.acks then return end
+	lastPush = now
+	stage = {
+		list = list, i = 1, done = {}, sending = {}, sections = {}, started = now, captured = captured,
+		cost = { collect = 0, json = 0, slowest = 0 },
+	}
+	stager:Show()
 end
 
 local function Tick()

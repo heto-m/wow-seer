@@ -21,7 +21,6 @@ const SYNC_EVERY = 500;
 const HEARTBEAT_EVERY = 30;
 const FAILS_BEFORE_BIGGER_CELLS = 2;
 const CAPTURE_EVERY = 250;
-const CAPTURE_FROM = "0.6.0";
 const CAPTURE_MISSES = 2;
 const CAPTURE_RETRY = 10 * 60_000;
 const RECENT_FRAMES = 64;
@@ -228,7 +227,7 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
     tell(c !== null);
   };
   const onReceived = (msg: any, via: string) => {
-    if (typeof msg.version !== "string" || (compareVersions(msg.version, CAPTURE_FROM) ?? -1) < 0) return;
+    if (typeof msg.capture !== "boolean") return;
     if (via === "capture") misses = 0;
     if (cap && via === "screenshot" && msg.capture === true && ++misses >= CAPTURE_MISSES) {
       offAt = Date.now();

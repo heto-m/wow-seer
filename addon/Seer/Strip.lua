@@ -5,7 +5,7 @@ local BITS = 2
 local COLS_MAX, ROWS_MAX = 1024, 16
 local HEADER_X, HEADER_CELLS = 68, 54
 local TAIL_X = HEADER_X + 4 * HEADER_CELLS
-local BUILD_PER_FRAME = 4096
+local BUILD_PER_FRAME = 2048
 -- Screenshots are named by the second; two in the same second overwrite each other.
 local PART_GAP = 1.05
 local TIMEOUT = 10
