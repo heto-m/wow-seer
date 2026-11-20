@@ -13,7 +13,7 @@ local TIMEOUT = 10
 local HOLD = 0.5
 
 -- 16 rows (16384 textures) gave screenshots with no UI at all; 8 work.
-local Strip = { cell = 1, rows = 8, pre = 1, capture = false, shotsUntil = 0 }
+local Strip = { cell = 1, rows = 8, pre = 1, capture = false, shotsLeft = 0 }
 ns.Strip = Strip
 
 local frame, pools = nil, { column = {}, sync = {}, header = {}, tail = {}, payload = {} }
@@ -211,7 +211,7 @@ driver:SetScript("OnUpdate", function(_, elapsed)
 			end
 		elseif job.phase == "show" and job.waited < Strip.pre - 1 then
 			job.waited = job.waited + 1
-		elseif job.phase == "show" and Strip.Capturing() then
+		elseif job.phase == "show" and job.captured then
 			job.phase = "held"
 			job.heldUntil = GetTime() + HOLD
 		elseif job.phase == "held" then
@@ -254,14 +254,14 @@ function Strip.OnScreenshot(succeeded)
 end
 
 function Strip.Capturing()
-	return Strip.capture and GetTime() >= Strip.shotsUntil
+	return Strip.capture and Strip.shotsLeft <= 0
 end
 
 function Strip.Busy()
 	return job ~= nil
 end
 
-function Strip.Send(msg, text, done)
+function Strip.Send(msg, text, done, captured)
 	if job then return false end
 	local cols = Strip.Columns()
 	local per = floor(cols * math.min(Strip.rows, ROWS_MAX) * 3 * BITS / 8 / 3) * 3
@@ -271,7 +271,7 @@ function Strip.Send(msg, text, done)
 		parts[k] = { msg = msg % 65536, part = k, parts = n, cols = cols, cell = Strip.cell,
 			data = text:sub((k - 1) * per + 1, k * per) }
 	end
-	job = { parts = parts, index = 1, done = done, stats = { build = 0, shots = 0 } }
+	job = { parts = parts, index = 1, done = done, captured = captured, stats = { build = 0, shots = 0 } }
 	Strip.lastStats = job.stats
 	StartPart()
 	return true

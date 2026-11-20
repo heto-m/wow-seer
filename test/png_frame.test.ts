@@ -138,6 +138,10 @@ test("the server turns capture off when it can't, or when the addon keeps fallin
   await until(() => state.meta.capture === "on", 2);
   const msg = { version: VERSION, capture: true };
   state.emit("received", msg, "screenshot");
+  state.emit("received", msg, "screenshot");
+  state.emit("received", { ...msg, msg: 7 }, "capture");
+  state.emit("received", msg, "screenshot");
+  state.emit("received", msg, "screenshot");
   assert.equal(state.meta.capture, "on");
   state.emit("received", msg, "screenshot");
   stop();

@@ -5,7 +5,6 @@ local POLL_ALIVE, POLL_IDLE = 10, 60
 local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
-local SHOTS_AFTER_MISS = 120
 local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
@@ -204,7 +203,7 @@ local function ResendLost()
 		if now - sent.at > CONFIRM_WITHIN then
 			unconfirmed[id] = nil
 			for _, s in ipairs(sent.sections) do Mark(s) end
-			if sent.captured then ns.Strip.shotsUntil = now + SHOTS_AFTER_MISS end
+			if sent.captured then ns.Strip.shotsLeft = 1 end
 		end
 	end
 end
@@ -279,7 +278,7 @@ local function Send(st)
 			warned[why] = true
 			Say(L.SEND_FAILED, tostring(why))
 		end
-	end)
+	end, st.captured)
 	if not ok then Requeue(list, sent, st.started) end
 end
 
@@ -338,6 +337,7 @@ local function Push(force)
 	if not captured and not PngReady() then return end
 	local list = Ready(now)
 	if #list == 0 and not dirty.acks then return end
+	if not captured and ns.Strip.shotsLeft > 0 then ns.Strip.shotsLeft = ns.Strip.shotsLeft - 1 end
 	lastPush = now
 	stage = {
 		list = list, i = 1, done = {}, sending = {}, sections = {}, started = now, captured = captured,

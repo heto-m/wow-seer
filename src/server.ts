@@ -21,7 +21,7 @@ const SYNC_EVERY = 500;
 const HEARTBEAT_EVERY = 30;
 const FAILS_BEFORE_BIGGER_CELLS = 2;
 const CAPTURE_EVERY = 250;
-const CAPTURE_MISSES = 2;
+const CAPTURE_MISSES = 3;
 const CAPTURE_RETRY = 10 * 60_000;
 const RECENT_FRAMES = 64;
 const SHARED_KEYS = ["sections", "pending", "acked", "addon", "meta", "cell", "got"] as const;
@@ -202,9 +202,12 @@ export function processImage(state: State, img: Raw): boolean {
   try {
     ({ header, payload } = decode(img));
   } catch (e) {
-    if (e instanceof NotSeer || e instanceof BadFrame) return false;
-    throw e;
+    if (e instanceof NotSeer) return false;
+    if (!(e instanceof BadFrame)) throw e;
+    log("captured a broken strip:", e.message);
+    return false;
   }
+  if (process.env.WOW_SEER_DEBUG) log(`captured msg ${header.msg} part ${header.part}/${header.parts}`);
   accept(state, header, payload, "capture");
   return true;
 }
@@ -228,6 +231,7 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
   };
   const onReceived = (msg: any, via: string) => {
     if (typeof msg.capture !== "boolean") return;
+    if (process.env.WOW_SEER_DEBUG) log(`msg ${msg.msg} by ${via}`);
     if (via === "capture") misses = 0;
     if (cap && via === "screenshot" && msg.capture === true && ++misses >= CAPTURE_MISSES) {
       offAt = Date.now();
