@@ -36,16 +36,30 @@ local function Cell(pool, i)
 	return t
 end
 
+local placedX, placedY, placedSize, shown = {}, {}, {}, {}
+
 local function Place(t, x, y, size, r, g, b)
-	t:ClearAllPoints()
-	t:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
-	t:SetSize(size, size)
+	if placedX[t] ~= x or placedY[t] ~= y or placedSize[t] ~= size then
+		t:ClearAllPoints()
+		t:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
+		t:SetSize(size, size)
+		placedX[t], placedY[t], placedSize[t] = x, y, size
+	end
 	t:SetColorTexture(r, g, b, 1)
-	t:Show()
+	if not shown[t] then
+		t:Show()
+		shown[t] = true
+	end
 end
 
 local function HideFrom(pool, from)
-	for i = from, #pool do pool[i]:Hide() end
+	for i = from, #pool do
+		local t = pool[i]
+		if shown[t] then
+			t:Hide()
+			shown[t] = false
+		end
+	end
 end
 
 local function EnsureFrame()
@@ -135,14 +149,14 @@ local driver = CreateFrame("Frame")
 driver:Hide()
 local Clock = debugprofilestop or function() return GetTime() * 1000 end
 
--- Runs past Finish: the encode stall lands in the frames after Screenshot(), sometimes after the event.
+-- Runs past Finish: the encode stall can land in any frame up to a few after SCREENSHOT_SUCCEEDED.
 local watch = CreateFrame("Frame")
+local watchStats, watchFrames, watchEventAt
 watch:Hide()
 watch:SetScript("OnUpdate", function(self, elapsed)
-	local st = self.stats
-	st.hitch = math.max(st.hitch or 0, elapsed * 1000)
-	self.frames = self.frames + 1
-	if self.frames >= 5 then self:Hide() end
+	watchStats.hitch = math.max(watchStats.hitch or 0, elapsed * 1000)
+	watchFrames = watchFrames + 1
+	if (watchEventAt and watchFrames >= watchEventAt + 3) or watchFrames >= 600 then self:Hide() end
 end)
 
 local function Debug(text)
@@ -184,7 +198,7 @@ driver:SetScript("OnUpdate", function(_, elapsed)
 			local to = math.min(p.groups, p.built + BUILD_PER_FRAME / 4)
 			local at = Clock()
 			BuildPayload(p, p.built + 1, to)
-			job.stats.build = job.stats.build + Clock() - at
+			job.stats.build = math.max(job.stats.build, Clock() - at)
 			p.built = to
 			if to >= p.groups then
 				frame:Show()
@@ -201,7 +215,7 @@ driver:SetScript("OnUpdate", function(_, elapsed)
 			st.usual = math.max(st.usual or 0, (job.lastElapsed or 0) * 1000)
 			st.shots = st.shots + 1
 			Screenshot()
-			watch.stats, watch.frames = st, 0
+			watchStats, watchFrames, watchEventAt = st, 0, nil
 			watch:Show()
 			Debug("screenshot called")
 			job.phase = "taken"
@@ -219,6 +233,7 @@ function Strip.OnScreenshot(succeeded)
 	if ActionStatus and ActionStatus:IsShown() then ActionStatus:Hide() end
 	hideStatusUntil = GetTime() + 3
 	Debug("screenshot event " .. tostring(succeeded))
+	watchEventAt = watchFrames
 	if not succeeded then Finish(false, "screenshot failed") return end
 	if job.index >= #job.parts then Finish(true) return end
 	job.index = job.index + 1
