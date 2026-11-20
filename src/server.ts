@@ -11,6 +11,7 @@ import { compareVersions, VERSION, versionWarning } from "./version.js";
 
 const SCAN_EVERY = 300;
 const YIELD_COOLDOWN = 10_000;
+const ASK_AGAIN = 60_000;
 const DEFLATED = 0x5a;
 
 export function messageText(buf: Buffer): string {
@@ -231,7 +232,9 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
   };
   const onReceived = (msg: any, via: string) => {
     if (typeof msg.capture !== "boolean") return;
-    if (process.env.WOW_SEER_DEBUG) log(`msg ${msg.msg} by ${via}`);
+    if (process.env.WOW_SEER_DEBUG) {
+      log(`msg ${msg.msg} by ${via}` + (via === "screenshot" ? ` (captures so far ${grabs}, empty ${empty})` : ""));
+    }
     if (via === "capture") misses = 0;
     if (cap && via === "screenshot" && msg.capture === true && ++misses >= CAPTURE_MISSES) {
       offAt = Date.now();
@@ -255,11 +258,19 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
       setCapture(c, "on");
     }
   });
+  const debug = !!process.env.WOW_SEER_DEBUG;
+  let lastGrab = 0, empty = 0, grabs = 0;
   const timer = setInterval(async () => {
     if (!cap || busy || stopped) return;
     busy = true;
     try {
+      const at = Date.now();
+      if (debug && lastGrab && at - lastGrab > 400) log(`capture gap ${at - lastGrab} ms`);
+      lastGrab = at;
+      grabs += 1;
       const img = await cap.grab();
+      if (debug && Date.now() - at > 100) log(`slow capture ${Date.now() - at} ms`);
+      if (!img) empty += 1;
       if (img && !stopped) processImage(state, img);
     } catch (e) {
       log("capture failed:", (e as Error).message);
@@ -394,7 +405,7 @@ export function startBackground(state: State): () => void {
   const stateFile = path.join(folder, "state.json");
   const lock = new LeaderLock(folder, VERSION);
   const stops: Array<() => void> = [];
-  let askedToYield = false;
+  let askedAt = -Infinity;
   let yieldedAt = -Infinity;
   lock.onYield = () => {
     for (const stop of stops.splice(0)) stop();
@@ -411,8 +422,8 @@ export function startBackground(state: State): () => void {
 
   const takeLead = async () => {
     if (await lock.acquire()) return true;
-    if (askedToYield) return false;
-    askedToYield = true;
+    if (Date.now() - askedAt < ASK_AGAIN) return false;
+    askedAt = Date.now();
     return (await lock.askToYield()) && (await waitForLock());
   };
   const waitForLock = async () => {

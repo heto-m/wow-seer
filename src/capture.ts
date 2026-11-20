@@ -41,8 +41,9 @@ export async function loadCapturer(): Promise<Capturer | string> {
           const crop = await img.crop(0, 0, Math.min(CROP_W, img.width), Math.min(CROP_H, img.height));
           const raw: Buffer = await crop.toRaw();
           return new Raw(raw, crop.width, crop.height);
-        } catch {
+        } catch (e) {
           foundAt = -Infinity;
+          if (process.env.WOW_SEER_DEBUG) process.stderr.write(`wow-seer: capture error ${(e as Error).message}\n`);
         }
       }
       return null;
