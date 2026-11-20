@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
-import { roundHalfEven } from "../src/frame.js";
+import { Raw, roundHalfEven } from "../src/frame.js";
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -23,7 +23,7 @@ function chunk(kind: string, data: Buffer): Buffer {
   return Buffer.concat([head, body, crc]);
 }
 
-export function renderPng(cells: number[][], width: number, height: number, sx = 1, sy = 1, squeeze = true): Buffer {
+function renderRows(cells: number[][], width: number, height: number, sx: number, sy: number, squeeze: boolean): Buffer[] {
   const img = Array.from({ length: height }, () => {
     const row = Buffer.alloc(width * 3);
     for (let i = 0; i < width; i++) row.set([0x5a, 0x8c, 0x3c], i * 3);
@@ -41,6 +41,19 @@ export function renderPng(cells: number[][], width: number, height: number, sx =
       }
     }
   }
+  return img;
+}
+
+export function renderRaw(cells: number[][], width: number, height: number): Raw {
+  const rgba = Buffer.alloc(width * height * 4, 255);
+  renderRows(cells, width, height, 1, 1, true).forEach((row, y) => {
+    for (let x = 0; x < width; x++) row.copy(rgba, (y * width + x) * 4, 3 * x, 3 * x + 3);
+  });
+  return new Raw(rgba, width, height);
+}
+
+export function renderPng(cells: number[][], width: number, height: number, sx = 1, sy = 1, squeeze = true): Buffer {
+  const img = renderRows(cells, width, height, sx, sy, squeeze);
   const raw = Buffer.concat(img.map((row) => Buffer.concat([Buffer.from([0]), row])));
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);

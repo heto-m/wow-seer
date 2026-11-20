@@ -9,9 +9,11 @@ local BUILD_PER_FRAME = 4096
 -- Screenshots are named by the second; two in the same second overwrite each other.
 local PART_GAP = 1.05
 local TIMEOUT = 10
+-- The server captures the game window 4 times a second; the strip stays up long enough for at least one.
+local HOLD = 0.5
 
 -- 16 rows (16384 textures) gave screenshots with no UI at all; 8 work.
-local Strip = { cell = 1, rows = 8, pre = 1 }
+local Strip = { cell = 1, rows = 8, pre = 1, capture = false, shotsUntil = 0 }
 ns.Strip = Strip
 
 local frame, pools = nil, { column = {}, sync = {}, header = {}, tail = {}, payload = {} }
@@ -209,6 +211,14 @@ driver:SetScript("OnUpdate", function(_, elapsed)
 			end
 		elseif job.phase == "show" and job.waited < Strip.pre - 1 then
 			job.waited = job.waited + 1
+		elseif job.phase == "show" and Strip.Capturing() then
+			job.phase = "held"
+			job.heldUntil = GetTime() + HOLD
+		elseif job.phase == "held" then
+			if GetTime() < job.heldUntil then return end
+			if job.index >= #job.parts then Finish(true) return end
+			job.index = job.index + 1
+			StartPart()
 		elseif job.phase == "show" then
 			hideStatusUntil = GetTime() + 3
 			local st = job.stats
@@ -241,6 +251,10 @@ function Strip.OnScreenshot(succeeded)
 	C_Timer.After(PART_GAP, function()
 		if job then StartPart() end
 	end)
+end
+
+function Strip.Capturing()
+	return Strip.capture and GetTime() >= Strip.shotsUntil
 end
 
 function Strip.Busy()

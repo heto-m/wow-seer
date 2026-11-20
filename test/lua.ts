@@ -5,6 +5,9 @@ function isLua51(bin: string): boolean {
   return !r.error && /Lua 5\.1|LuaJIT/.test(r.stdout + r.stderr);
 }
 
+// Tests must never read the developer's real game window.
+process.env.WOW_SEER_CAPTURE ??= "0";
+
 const wanted = process.env.SEER_LUA;
 if (wanted && !isLua51(wanted)) throw new Error(`SEER_LUA=${wanted} is not a working Lua 5.1 or LuaJIT`);
 

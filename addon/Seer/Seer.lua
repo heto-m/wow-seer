@@ -5,6 +5,7 @@ local POLL_ALIVE, POLL_IDLE = 10, 60
 local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
+local SHOTS_AFTER_MISS = 120
 local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
@@ -159,6 +160,9 @@ local function HandleRequest(req)
 	elseif req.kind == "prices" then
 		ns.wantedPrices = { items = type(req.items) == "table" and req.items or {}, bags = req.bags == true }
 		dirty.prices = -1000
+	elseif req.kind == "capture" then
+		ns.Strip.capture = req.on == true
+		db.capture = ns.Strip.capture
 	elseif req.kind == "update" and type(req.version) == "string" then
 		NewerVersion(req.version)
 	elseif req.kind == "config" and type(req.cell) == "number" and req.cell >= 1 and req.cell <= 4 then
@@ -200,6 +204,7 @@ local function ResendLost()
 		if now - sent.at > CONFIRM_WITHIN then
 			unconfirmed[id] = nil
 			for _, s in ipairs(sent.sections) do Mark(s) end
+			if sent.captured then ns.Strip.shotsUntil = now + SHOTS_AFTER_MISS end
 		end
 	end
 end
@@ -238,7 +243,7 @@ local function Push(force)
 	local now = GetTime()
 	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
 	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
-	if not PngReady() then return end
+	if not ns.Strip.Capturing() and not PngReady() then return end
 	local list = Ready(now)
 	if #list == 0 and not dirty.acks then return end
 	local cost = { collect = 0, json = 0, slowest = 0 }
@@ -264,7 +269,7 @@ local function Push(force)
 	local at = Clock()
 	local text = Message({
 		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
-		build = (GetBuildInfo()), version = VERSION, acks = sent,
+		build = (GetBuildInfo()), version = VERSION, acks = sent, capture = ns.Strip.capture,
 	}, sending)
 	cost.json = cost.json + Clock() - at
 	cost.raw = #text
@@ -272,13 +277,14 @@ local function Push(force)
 	text = Compress(text)
 	cost.compress = Clock() - at
 	local started = GetTime()
+	local captured = ns.Strip.Capturing()
 	for _, s in ipairs(list) do dirty[s] = nil end
 	dirty.acks = nil
 	lastPush = now
 	local ok = ns.Strip.Send(msgId, text, function(success, why)
 		if success then
 			ns.lastSent = { bytes = #text, at = GetTime(), sections = list, cost = cost, strip = ns.Strip.lastStats }
-			unconfirmed[msgId] = { at = GetTime(), sections = list }
+			unconfirmed[msgId] = { at = GetTime(), sections = list, captured = captured }
 			if sections.items then wipe(ns.wantedItems) end
 			if sections.prices then ns.wantedPrices = nil end
 			return
@@ -395,6 +401,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
 			db = SeerDB
 			db.saved = db.saved or {}
 			ns.Strip.cell = db.cell or 1
+			ns.Strip.capture = db.capture == true
 			ns.debug = db.debug
 			ns.Strip.rows = db.rows or ns.Strip.rows
 			ns.Strip.pre = db.pre or ns.Strip.pre

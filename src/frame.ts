@@ -31,6 +31,22 @@ export function roundHalfEven(v: number): number {
 
 type Pixel = [number, number, number] | null;
 
+interface Pixels {
+  cols: number;
+  rows: number;
+  px(x: number, y: number): Pixel;
+}
+
+export class Raw implements Pixels {
+  constructor(private data: Buffer, public cols: number, public rows: number, private bpp = 4) {}
+
+  px(x: number, y: number): Pixel {
+    if (!(x >= 0 && x < this.cols && y >= 0 && y < this.rows)) return null;
+    const i = (y * this.cols + x) * this.bpp;
+    return [this.data[i], this.data[i + 1], this.data[i + 2]];
+  }
+}
+
 function white(p: Pixel): boolean {
   return p !== null && Math.min(...p) > 127;
 }
@@ -48,7 +64,7 @@ function fit(units: number[], pixels: number[]): [number, number] {
   return [scale, mp - scale * mu];
 }
 
-function edges(img: Png, alongX: boolean, fixed: number, count: number): number[] {
+function edges(img: Pixels, alongX: boolean, fixed: number, count: number): number[] {
   const found: number[] = [];
   let state = true;
   const limit = alongX ? img.cols : img.rows;
@@ -64,7 +80,7 @@ function edges(img: Png, alongX: boolean, fixed: number, count: number): number[
 
 const NEAR = [0, -1, 1, -2, 2, -3, 3];
 
-function nearestEdge(img: Png, guess: number, y: number): number | null {
+function nearestEdge(img: Pixels, guess: number, y: number): number | null {
   for (const d of NEAR) {
     const i = guess + d;
     if (i >= 1 && white(img.px(i, y)) !== white(img.px(i - 1, y))) return i;
@@ -81,8 +97,9 @@ export function adler32(data: Buffer): number {
   return ((b << 16) | a) >>> 0;
 }
 
-export function decode(data: Buffer): { header: Header; payload: Buffer } {
-  let img = new Png(data, 8, 1200);
+export function decode(source: Buffer | Raw): { header: Header; payload: Buffer } {
+  const load = (rows: number, cols: number): Pixels => (source instanceof Raw ? source : new Png(source, rows, cols));
+  let img = load(8, 1200);
   if (!white(img.px(0, 1))) throw new NotSeer();
   const ex = edges(img, true, 1, 16);
   if (ex.length < 16) throw new NotSeer();
@@ -115,7 +132,7 @@ export function decode(data: Buffer): { header: Header; payload: Buffer } {
   const { cell, cols, rows } = header;
   const height = 8 + rows * cell;
   const width = Math.max(4 + cols * cell, TAIL_X + 32);
-  img = new Png(data, trunc((height + 8) * sx * 1.5) + 8, trunc((width + 8) * sx) + 8);
+  img = load(trunc((height + 8) * sx * 1.5) + 8, trunc((width + 8) * sx) + 8);
   for (let m = 1; m < Math.floor((width - TAIL_X) / 4); m++) {
     const u = TAIL_X + 4 * m;
     const e = nearestEdge(img, trunc(roundHalfEven(x0 + u * sx)), 1);

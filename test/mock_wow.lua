@@ -40,19 +40,35 @@ local function Fire(event, ...)
 	end
 end
 
-function Screenshot()
-	shots = shots + 1
-	local out = io.open(string.format("%s/shot%03d.txt", OUT, shots), "w")
+local function Dump(file)
+	local lines = {}
 	for _, f in ipairs(frames) do
 		if f.shown then
 			for _, t in ipairs(f.textures) do
 				if rawget(t, "shown") and rawget(t, "w") then
-					out:write(string.format("%g %g %g %.6f %.6f %.6f\n", t.x, t.y, t.w, t.r, t.g, t.b))
+					lines[#lines + 1] = string.format("%g %g %g %.6f %.6f %.6f\n", t.x, t.y, t.w, t.r, t.g, t.b)
 				end
 			end
 		end
 	end
+	if #lines == 0 then return false end
+	local out = io.open(file, "w")
+	out:write(table.concat(lines))
 	out:close()
+	return true
+end
+
+local captures = 0
+if os.getenv("MOCK_CAPTURE") then
+	SeerDB = { capture = os.getenv("MOCK_CAPTURE") == "saved" or nil }
+	CaptureWindow = function()
+		if Dump(string.format("%s/cap%04d.txt", OUT, captures + 1)) then captures = captures + 1 end
+	end
+end
+
+function Screenshot()
+	shots = shots + 1
+	Dump(string.format("%s/shot%03d.txt", OUT, shots))
 	pendingEvents[#pendingEvents + 1] = { at = now + 0.4, event = "SCREENSHOT_SUCCEEDED" }
 end
 
@@ -230,6 +246,7 @@ Fire("ADDON_LOADED", "Seer")
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD")
 
+if CaptureWindow then C_Timer.NewTicker(0.25, CaptureWindow) end
 if os.getenv("MOCK_SEND") then
 	C_Timer.After(10, function() SlashCmdList.SEER("send") end)
 	C_Timer.After(18, function() SlashCmdList.SEER("status") end)
@@ -271,4 +288,5 @@ while now < stop do
 	end
 end
 print("shots " .. shots)
+print("captures " .. captures)
 for _, line in ipairs(sent) do print("sent " .. line) end

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
+import "./lua.js";
 import { startBackground, State } from "../src/server.js";
 import { LeaderLock } from "../src/shared.js";
 

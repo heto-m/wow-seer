@@ -438,6 +438,8 @@ export async function callTool(state: State, name: string, args: Args): Promise<
       pending_requests: state.pending.length,
       last_error: state.meta.last_error,
       cell_px: state.cell,
+      capture: state.meta.capture,
+      addon_sends_by: last ? (state.addon.capture ? "window capture" : "screenshots") : null,
       client_build: state.addon.build ?? null,
       server_version: VERSION,
       addon_version: last ? state.addon.version || "unknown" : null,
