@@ -5,6 +5,7 @@ local POLL_ALIVE, POLL_IDLE = 10, 60
 local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
+local LOST_CAPTURES = 2
 local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
@@ -20,6 +21,7 @@ local msgId = 0
 local unconfirmed = {}
 local worldReady, loading = false, false
 local warned = {}
+local lostCaptures = 0
 local L = ns.L
 
 local function Say(text, ...)
@@ -193,7 +195,10 @@ local function Poll()
 		if not Alive() then MarkAll() end
 		serverSeen = GetTime()
 	end
-	for _, id in ipairs(type(inbox.got) == "table" and inbox.got or {}) do unconfirmed[id] = nil end
+	for _, id in ipairs(type(inbox.got) == "table" and inbox.got or {}) do
+		if unconfirmed[id] and unconfirmed[id].captured then lostCaptures = 0 end
+		unconfirmed[id] = nil
+	end
 	for _, req in ipairs(type(inbox.reqs) == "table" and inbox.reqs or {}) do HandleRequest(req) end
 end
 
@@ -203,7 +208,15 @@ local function ResendLost()
 		if now - sent.at > CONFIRM_WITHIN then
 			unconfirmed[id] = nil
 			for _, s in ipairs(sent.sections) do Mark(s) end
-			if sent.captured then ns.Strip.shotsLeft = 1 end
+			if sent.captured then
+				ns.Strip.shotsLeft = 1
+				lostCaptures = lostCaptures + 1
+				-- An older server, or one that lost the window, never says so: stop waiting on captures.
+				if lostCaptures >= LOST_CAPTURES then
+					ns.Strip.capture = false
+					db.capture = false
+				end
+			end
 		end
 	end
 end
@@ -452,6 +465,11 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
 			C_Timer.NewTicker(1, Tick)
 			pcall(ns.HookAddons, Mark)
 		elseif event == "PLAYER_ENTERING_WORLD" then
+			-- Capture mode lasts across /reload only: after a login the server may be another one.
+			if arg1 then
+				ns.Strip.capture = false
+				db.capture = false
+			end
 			for _, s in ipairs(ALWAYS) do Mark(s) end
 			C_Timer.After(10, ShareVersion)
 			C_Timer.After(8, function() if not loading then worldReady = true end end)

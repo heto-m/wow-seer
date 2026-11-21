@@ -244,7 +244,7 @@ if os.getenv("MOCK_ADDONS") then
 end
 Fire("ADDON_LOADED", "Seer")
 Fire("PLAYER_LOGIN")
-Fire("PLAYER_ENTERING_WORLD")
+Fire("PLAYER_ENTERING_WORLD", os.getenv("MOCK_LOGIN") == "1", os.getenv("MOCK_LOGIN") ~= "1")
 
 if CaptureWindow then C_Timer.NewTicker(0.25, CaptureWindow) end
 if os.getenv("MOCK_SEND") then

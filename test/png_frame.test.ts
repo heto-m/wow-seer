@@ -90,11 +90,20 @@ test("capture mode holds the strip for the window capture instead of calling Scr
   assert.equal(out[0].capture, true);
 });
 
-test("a captured message the server never confirms is sent again by screenshot", { skip: !LUA && "needs lua5.1" }, () => {
+test("unconfirmed captures are resent by screenshot, and two in a row end capture mode", { skip: !LUA && "needs lua5.1" }, () => {
   const { files, out, stdout } = messages(70, { env: { MOCK_CAPTURE: "saved" } });
   assert.match(stdout, /shots [1-9]/);
   assert.ok(files.some((f) => f.startsWith("cap")));
-  assert.ok(out.every((m) => m.capture === true));
+  assert.equal(out[0].capture, true);
+  assert.equal(out.at(-1).capture, false);
+});
+
+test("a new login starts without capture mode; a /reload keeps it", { skip: !LUA && "needs lua5.1" }, () => {
+  const login = messages(15, { env: { MOCK_CAPTURE: "saved", MOCK_LOGIN: "1" } });
+  assert.ok(login.files.every((f) => f.startsWith("shot")));
+  assert.equal(login.out[0].capture, false);
+  const reload = messages(15, { env: { MOCK_CAPTURE: "saved" } });
+  assert.ok(reload.files.every((f) => f.startsWith("cap")));
 });
 
 async function until(predicate: () => boolean, seconds: number): Promise<void> {
