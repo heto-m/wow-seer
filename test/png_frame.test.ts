@@ -95,7 +95,14 @@ test("unconfirmed captures are resent by screenshot, and two in a row end captur
   assert.match(stdout, /shots [1-9]/);
   assert.ok(files.some((f) => f.startsWith("cap")));
   assert.equal(out[0].capture, true);
+  assert.ok(out.some((m) => m.fallback === true));
   assert.equal(out.at(-1).capture, false);
+});
+
+test("in the background (low FPS) capture mode sends by screenshot without calling it a fallback", { skip: !LUA && "needs lua5.1" }, () => {
+  const { files, out } = messages(15, { env: { MOCK_CAPTURE: "saved", MOCK_FPS: "8" } });
+  assert.ok(files.length > 0 && files.every((f) => f.startsWith("shot")));
+  assert.ok(out.every((m) => m.capture === true && m.fallback === false));
 });
 
 test("a new login starts without capture mode; a /reload keeps it", { skip: !LUA && "needs lua5.1" }, () => {
@@ -145,7 +152,7 @@ test("the server turns capture off when it can't, or when the addon keeps fallin
   state.role = "leader";
   const stop = startCapture(state, async () => ({ grab: async () => null }));
   await until(() => state.meta.capture === "on", 2);
-  const msg = { version: VERSION, capture: true };
+  const msg = { version: VERSION, capture: true, fallback: true };
   state.emit("received", msg, "screenshot");
   state.emit("received", msg, "screenshot");
   state.emit("received", { ...msg, msg: 7 }, "capture");

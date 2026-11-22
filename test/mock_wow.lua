@@ -59,6 +59,7 @@ local function Dump(file)
 end
 
 local captures = 0
+if os.getenv("MOCK_FPS") then function GetFramerate() return tonumber(os.getenv("MOCK_FPS")) end end
 if os.getenv("MOCK_CAPTURE") then
 	SeerDB = { capture = os.getenv("MOCK_CAPTURE") == "saved" or nil }
 	CaptureWindow = function()

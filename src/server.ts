@@ -237,7 +237,7 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
       log(`msg ${msg.msg} by ${via}` + (via === "screenshot" ? ` (captures so far ${grabs}, empty ${empty})` : ""));
     }
     if (via === "capture") misses = 0;
-    if (cap && via === "screenshot" && msg.capture === true && ++misses >= CAPTURE_MISSES) {
+    if (cap && via === "screenshot" && msg.fallback === true && ++misses >= CAPTURE_MISSES) {
       offAt = Date.now();
       setCapture(null, "off: the game window did not show the strip, so the addon fell back to screenshots");
       return;

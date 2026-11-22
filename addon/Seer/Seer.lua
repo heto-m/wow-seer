@@ -6,6 +6,9 @@ local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
 local LOST_CAPTURES = 2
+-- In the background the game draws a few frames a second and a held strip can miss every capture; a screenshot
+-- freeze costs nothing there.
+local CAPTURE_MIN_FPS = 20
 local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
@@ -270,7 +273,7 @@ local function Send(st)
 	local at = Clock()
 	local text = Message({
 		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
-		build = (GetBuildInfo()), version = VERSION, acks = sent, capture = ns.Strip.capture,
+		build = (GetBuildInfo()), version = VERSION, acks = sent, capture = ns.Strip.capture, fallback = st.fallback,
 	}, st.sending)
 	cost.json = cost.json + Clock() - at
 	cost.raw = #text
@@ -346,14 +349,15 @@ local function Push(force)
 	local now = GetTime()
 	if stage or ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
 	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
-	local captured = ns.Strip.Capturing()
+	local fallback = ns.Strip.shotsLeft > 0
+	local captured = ns.Strip.Capturing() and (not GetFramerate or GetFramerate() >= CAPTURE_MIN_FPS)
 	if not captured and not PngReady() then return end
 	local list = Ready(now)
 	if #list == 0 and not dirty.acks then return end
-	if not captured and ns.Strip.shotsLeft > 0 then ns.Strip.shotsLeft = ns.Strip.shotsLeft - 1 end
+	if fallback then ns.Strip.shotsLeft = ns.Strip.shotsLeft - 1 end
 	lastPush = now
 	stage = {
-		list = list, i = 1, done = {}, sending = {}, sections = {}, started = now, captured = captured,
+		list = list, i = 1, done = {}, sending = {}, sections = {}, started = now, captured = captured, fallback = fallback,
 		cost = { collect = 0, json = 0, slowest = 0 },
 	}
 	stager:Show()
