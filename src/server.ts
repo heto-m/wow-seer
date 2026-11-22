@@ -234,7 +234,8 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
   const onReceived = (msg: any, via: string) => {
     if (typeof msg.capture !== "boolean") return;
     if (process.env.WOW_SEER_DEBUG) {
-      log(`msg ${msg.msg} by ${via}` + (via === "screenshot" ? ` (captures so far ${grabs}, empty ${empty})` : ""));
+      const why = msg.fallback ? "resent after a miss" : msg.capture ? "background" : "screenshot mode";
+      log(`msg ${msg.msg} by ${via}` + (via === "screenshot" ? ` (${why}; captures so far ${grabs}, empty ${empty})` : ""));
     }
     if (via === "capture") misses = 0;
     if (cap && via === "screenshot" && msg.fallback === true && ++misses >= CAPTURE_MISSES) {
