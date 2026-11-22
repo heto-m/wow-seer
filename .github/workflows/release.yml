@@ -30,6 +30,7 @@ jobs:
           toc=$(sed -n 's/^## Version://p' addon/Seer/Seer.toc | tr -d '[:space:]')
           [ "$pkg" = "$want" ] || { echo "::error::package.json is $pkg, tag is $GITHUB_REF_NAME"; exit 1; }
           case "$toc" in ""|"$want"|@project-version@) ;; *) echo "::error::Seer.toc is $toc, tag is $GITHUB_REF_NAME"; exit 1 ;; esac
+          grep -qx "## $want" CHANGELOG.md || { echo "::error::CHANGELOG.md has no \"## $want\" section"; exit 1; }
 
       - run: sudo apt-get update && sudo apt-get install -y lua5.1
       - run: npm ci
@@ -55,13 +56,13 @@ jobs:
         env:
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # The packager's notes list every commit, merge commits included; GitHub's list one line per PR.
-      - name: Use GitHub's release notes
+      - name: Release notes from CHANGELOG.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body |
-            gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --notes-file -
+          awk -v v="${GITHUB_REF_NAME#v}" '/^## /{p = ($2 == v); next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::CHANGELOG.md has no notes for $GITHUB_REF_NAME"; exit 1; }
+          gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --notes-file notes.md
 
       - name: Upload to CurseForge
         env:
@@ -75,8 +76,8 @@ jobs:
             jq --arg v "$game_version" '[.[] | select(.gameVersionTypeID == 88568 and .name == $v) | .id][0]')
           [ "$version_id" != null ] || { echo "::error::CurseForge has no Forever version $game_version"; exit 1; }
           jq -n --arg name "Seer ${GITHUB_REF_NAME#v}" --argjson gv "$version_id" --arg type release \
-            --arg log "https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" \
-            '{displayName: $name, gameVersions: [$gv], releaseType: $type, changelog: $log, changelogType: "text"}' > metadata.json
+            --rawfile log notes.md \
+            '{displayName: $name, gameVersions: [$gv], releaseType: $type, changelog: $log, changelogType: "markdown"}' > metadata.json
           curl -sSf --retry 3 -H "x-api-token: $CF_API_TOKEN" \
             -F "metadata=<metadata.json" -F "file=@$(ls .release/*.zip)" \
             "https://wow.curseforge.com/api/projects/$project/upload-file"

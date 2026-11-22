@@ -4,7 +4,7 @@ Lets any AI (Claude Code, Claude Desktop, a local model) read your WoW: Forever 
 
 ## How it works
 
-The addon draws the state as a small colour strip in the top-left corner for half a second, and the server reads it straight from the game window, so the game never stops to save a screenshot. If the server can't read the window (no window access on that system, a covered or minimised game), the addon falls back to taking a screenshot, which the server decodes and deletes. Requests go the other way through small load-on-demand addons ("slots") that the addon checks every 10 s; `/reload` renews them. Like Questie, the addon tells your guild and group its version number, and says in chat when someone has a newer Seer; the server does the same when it is newer than the addon.
+The addon draws the state as a small colour strip in the top-left corner for under a second, and the server reads it straight from the game window, so the game never stops to save a screenshot. If the server can't read the window (no window access on that system, a covered or minimised game), the addon falls back to taking a screenshot, which the server decodes and deletes. Requests go the other way through small load-on-demand addons ("slots") that the addon checks every 10 s; `/reload` renews them. Like Questie, the addon tells your guild and group its version number, and says in chat when someone has a newer Seer; the server does the same when it is newer than the addon.
 
 `/seer status` in game shows what the last send cost in milliseconds.
 
