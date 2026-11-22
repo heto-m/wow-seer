@@ -51,7 +51,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # No CF_API_TOKEN here: the packager can't put spaces in the CurseForge file name, so the next step uploads.
+      # No CF_API_TOKEN or WAGO_API_TOKEN here: the packager can't put spaces in the CurseForge file name, and the steps below upload with CHANGELOG.md notes.
       - uses: BigWigsMods/packager@01e8631a69c69d7654c788d152630d5fed9e3812 # v2.7.0
         env:
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -81,3 +81,20 @@ jobs:
           curl -sSf --retry 3 -H "x-api-token: $CF_API_TOKEN" \
             -F "metadata=<metadata.json" -F "file=@$(ls .release/*.zip)" \
             "https://wow.curseforge.com/api/projects/$project/upload-file"
+
+      - name: Upload to Wago
+        env:
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+        run: |
+          toc=addon/Seer/Seer.toc
+          project=$(sed -n 's/^## X-Wago-ID:[[:space:]]*//p' "$toc" | tr -d '\r')
+          [ -n "$project" ] && [ -n "$WAGO_API_TOKEN" ] || { echo "::warning::No X-Wago-ID or WAGO_API_TOKEN, skipping Wago"; exit 0; }
+          interface=$(sed -n 's/^## Interface:[[:space:]]*//p' "$toc" | tr -d '\r')
+          game_version="$((interface / 10000)).$((interface / 100 % 100)).$((interface % 100))"
+          curl -sSf https://addons.wago.io/api/data/game | jq -e --arg v "$game_version" '.patches.forever | index($v)' > /dev/null ||
+            { echo "::error::Wago has no Forever version $game_version"; exit 1; }
+          jq -n --arg label "${GITHUB_REF_NAME#v}" --arg v "$game_version" --rawfile log notes.md \
+            '{label: $label, supported_forever_patches: [$v], stability: "stable", changelog: $log}' > wago.json
+          curl -sSf --retry 3 -H "authorization: Bearer $WAGO_API_TOKEN" -H "accept: application/json" \
+            -F "metadata=<wago.json" -F "file=@$(ls .release/*.zip)" \
+            "https://addons.wago.io/api/projects/$project/version"
