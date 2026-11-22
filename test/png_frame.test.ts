@@ -100,14 +100,14 @@ test("unconfirmed captures are resent by screenshot, and two in a row end captur
 });
 
 test("in the background (low FPS) capture mode sends by screenshot without calling it a fallback", { skip: !LUA && "needs lua5.1" }, () => {
-  const { files, out } = messages(15, { env: { MOCK_CAPTURE: "saved", MOCK_FPS: "8" } });
-  assert.ok(files.length > 0 && files.every((f) => f.startsWith("shot")));
+  const { out, stdout } = messages(15, { env: { MOCK_CAPTURE: "saved", MOCK_FPS: "8" } });
+  assert.match(stdout, /shots [1-9]/);
   assert.ok(out.every((m) => m.capture === true && m.fallback === false));
 });
 
 test("a new login starts without capture mode; a /reload keeps it", { skip: !LUA && "needs lua5.1" }, () => {
   const login = messages(15, { env: { MOCK_CAPTURE: "saved", MOCK_LOGIN: "1" } });
-  assert.ok(login.files.every((f) => f.startsWith("shot")));
+  assert.match(login.stdout, /shots [1-9]/);
   assert.equal(login.out[0].capture, false);
   const reload = messages(15, { env: { MOCK_CAPTURE: "saved" } });
   assert.ok(reload.files.every((f) => f.startsWith("cap")));

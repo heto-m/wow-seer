@@ -13,9 +13,21 @@ const SCAN_EVERY = 300;
 const YIELD_COOLDOWN = 10_000;
 const ASK_AGAIN = 60_000;
 const DEFLATED = 0x5a;
+const SLICED = 0x59;
 
+// "Z": one raw-deflate stream (addons before 0.6); "Y": 3-byte length-prefixed raw-deflate slices.
 export function messageText(buf: Buffer): string {
-  return (buf[0] === DEFLATED ? zlib.inflateRawSync(buf.subarray(1)) : buf).toString("utf8");
+  if (buf[0] === DEFLATED) return zlib.inflateRawSync(buf.subarray(1)).toString("utf8");
+  if (buf[0] !== SLICED) return buf.toString("utf8");
+  const out: Buffer[] = [];
+  for (let i = 1; i < buf.length;) {
+    if (i + 3 > buf.length) throw new Error("cut slice header");
+    const n = (buf[i] << 16) | (buf[i + 1] << 8) | buf[i + 2];
+    i += 3;
+    out.push(zlib.inflateRawSync(buf.subarray(i, i + n)));
+    i += n;
+  }
+  return Buffer.concat(out).toString("utf8");
 }
 
 const SYNC_EVERY = 500;

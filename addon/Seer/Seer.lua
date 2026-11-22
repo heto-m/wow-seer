@@ -239,16 +239,16 @@ local function Ready(now)
 end
 
 local COMPRESS_FROM = 200
+-- In game a deflate call costs ~3 ms plus ~0.5 ms per KB, so big messages are deflated in slices, one per frame.
+local SLICE = 4096
 
--- "Z" marks raw deflate for the server; JSON never starts with it.
--- Deflate costs the game a few ms even on small text, so captured strips skip it until a message needs a second part.
-local function Compress(text, captured)
-	local lib = ns.LibDeflate or (LibStub and LibStub("LibDeflate", true))
-	local from = captured and ns.Strip.Capacity() or COMPRESS_FROM
-	if not lib or #text < from then return text end
-	local ok, packed = pcall(lib.CompressDeflate, lib, text, { level = 1 })
-	if ok and type(packed) == "string" and #packed + 1 < #text then return "Z" .. packed end
-	return text
+local function Deflater()
+	return ns.LibDeflate or (LibStub and LibStub("LibDeflate", true))
+end
+
+-- Captured strips skip deflate until a message needs a second part.
+local function WantsDeflate(text, captured)
+	return Deflater() ~= nil and #text >= (captured and ns.Strip.Capacity() or COMPRESS_FROM)
 end
 
 local Clock = debugprofilestop or function() return GetTime() * 1000 end
@@ -269,24 +269,15 @@ local function Requeue(list, sent, at)
 	for _, id in ipairs(sent or {}) do acks[#acks + 1] = id end
 end
 
-local function Send(st)
-	local cost, list, sections = st.cost, st.list, st.sections
-	msgId = (db.msgId or 0) % 65535 + 1
-	db.msgId = msgId
-	local sent = acks
-	acks = {}
-	dirty.acks = nil
-	local at = Clock()
-	local text = Message({
-		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
-		build = (GetBuildInfo()), version = VERSION, acks = sent, capture = ns.Strip.capture, fallback = st.fallback,
-	}, st.sending)
-	cost.json = cost.json + Clock() - at
-	cost.raw = #text
-	at = Clock()
-	text = Compress(text, st.captured)
-	cost.compress = Clock() - at
-	local id = msgId
+local stage
+local stager = CreateFrame("Frame")
+stager:Hide()
+
+local function Transmit(st, text)
+	stage = nil
+	stager:Hide()
+	local cost, list, sections, sent = st.cost, st.list, st.sections, st.sent
+	local id = st.id
 	local ok = ns.Strip.Send(id, text, function(success, why)
 		if success then
 			ns.lastSent = { bytes = #text, at = GetTime(), sections = list, cost = cost, strip = ns.Strip.lastStats }
@@ -304,46 +295,79 @@ local function Send(st)
 	if not ok then Requeue(list, sent, st.started) end
 end
 
--- One section per frame, then the message: a full send no longer lands on a single frame.
-local stage
-local stager = CreateFrame("Frame")
-stager:Hide()
+local function Build(st)
+	msgId = (db.msgId or 0) % 65535 + 1
+	db.msgId = msgId
+	st.id = msgId
+	st.sent = acks
+	acks = {}
+	dirty.acks = nil
+	local at = Clock()
+	local text = Message({
+		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
+		build = (GetBuildInfo()), version = VERSION, acks = st.sent, capture = ns.Strip.capture, fallback = st.fallback,
+	}, st.sending)
+	st.cost.json = st.cost.json + Clock() - at
+	st.cost.raw = #text
+	st.cost.compress = 0
+	if not WantsDeflate(text, st.captured) then return Transmit(st, text) end
+	st.text, st.pos, st.slices = text, 1, {}
+end
+
+-- "Y" marks length-prefixed raw-deflate slices for the server; JSON never starts with it.
+local function PackSlice(st)
+	local lib = Deflater()
+	local at = Clock()
+	local ok, packed = pcall(lib.CompressDeflate, lib, st.text:sub(st.pos, st.pos + SLICE - 1), { level = 1 })
+	st.cost.compress = math.max(st.cost.compress, Clock() - at)
+	if not ok or type(packed) ~= "string" then return Transmit(st, st.text) end
+	local n = #packed
+	st.slices[#st.slices + 1] = string.char(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256) .. packed
+	st.pos = st.pos + SLICE
+	if st.pos <= #st.text then return end
+	local text = "Y" .. table.concat(st.slices)
+	Transmit(st, #text < #st.text and text or st.text)
+end
+
+local function CollectNext(st)
+	local s = st.list[st.i]
+	st.i = st.i + 1
+	dirty[s] = nil
+	st.done[#st.done + 1] = s
+	local at = Clock()
+	local data = Collect(s)
+	local took = Clock() - at
+	st.cost.collect = st.cost.collect + took
+	if took > st.cost.slowest then st.cost.slowest, st.cost.slowestName = took, s end
+	if data ~= nil then
+		at = Clock()
+		st.sections[s] = true
+		st.sending[#st.sending + 1] = s
+		db.saved[s] = ns.ToJson(data)
+		st.cost.json = st.cost.json + Clock() - at
+	end
+end
+
+-- One step per frame (a section, the message, a deflate slice): a full send never lands on a single frame.
 stager:SetScript("OnUpdate", function(self)
 	local st = stage
 	local ok, err = pcall(function()
 		if InCombatLockdown() then
 			stage = nil
 			self:Hide()
-			Requeue(st.done, nil, st.started)
-			return
-		end
-		local s = st.list[st.i]
-		if not s then
-			stage = nil
-			self:Hide()
-			Send(st)
-			return
-		end
-		st.i = st.i + 1
-		dirty[s] = nil
-		st.done[#st.done + 1] = s
-		local at = Clock()
-		local data = Collect(s)
-		local took = Clock() - at
-		st.cost.collect = st.cost.collect + took
-		if took > st.cost.slowest then st.cost.slowest, st.cost.slowestName = took, s end
-		if data ~= nil then
-			at = Clock()
-			st.sections[s] = true
-			st.sending[#st.sending + 1] = s
-			db.saved[s] = ns.ToJson(data)
-			st.cost.json = st.cost.json + Clock() - at
+			Requeue(st.done, st.sent, st.started)
+		elseif st.text then
+			PackSlice(st)
+		elseif st.list[st.i] then
+			CollectNext(st)
+		else
+			Build(st)
 		end
 	end)
 	if not ok then
 		stage = nil
 		self:Hide()
-		if st then Requeue(st.done, nil, st.started) end
+		if st then Requeue(st.done, st.sent, st.started) end
 		if not warned.stage then
 			warned.stage = true
 			Say(Red(L.ERROR) .. " " .. tostring(err))
@@ -405,6 +429,11 @@ local EVENTS = {
 	TRADE_SKILL_LIST_UPDATE = { "profession" },
 	MERCHANT_UPDATE = { "merchant" },
 	PLAYERBANKSLOTS_CHANGED = { "bank" },
+}
+
+local FORGET_GEAR = {
+	PLAYER_EQUIPMENT_CHANGED = true, PLAYER_LEVEL_UP = true, CHARACTER_POINTS_CHANGED = true,
+	ACTIVE_TALENT_GROUP_CHANGED = true, TRAIT_CONFIG_UPDATED = true,
 }
 
 local OPEN = {
@@ -510,6 +539,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
 			ns[o[1]] = o[2]
 			if o[3] then Mark(o[3]) end
 		elseif EVENTS[event] then
+			if FORGET_GEAR[event] then ns.ForgetGear() end
 			for _, s in ipairs(EVENTS[event]) do Mark(s) end
 		else
 			OnAuction(event, arg1)
