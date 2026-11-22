@@ -24,6 +24,7 @@ export class LeaderLock {
   readonly address: string;
   onYield: (() => void) | null = null;
   private server: net.Server | null = null;
+  private inode: number | null = null;
 
   constructor(folder: string, readonly version = "0") {
     this.address = process.platform === "win32"
@@ -33,6 +34,16 @@ export class LeaderLock {
 
   get held(): boolean {
     return this.server !== null;
+  }
+
+  // Two servers starting together can each unlink the other's stale-looking socket; the one whose file is gone lost.
+  stillHeld(): boolean {
+    if (!this.server || this.inode === null) return this.server !== null;
+    try {
+      return fs.statSync(this.address).ino === this.inode;
+    } catch {
+      return false;
+    }
   }
 
   async acquire(): Promise<boolean> {
@@ -47,9 +58,16 @@ export class LeaderLock {
     return this.listen();
   }
 
+  // Closing would unlink the socket path, which now belongs to the other leader; leave the orphan socket open.
+  abandon(): void {
+    this.server = null;
+    this.inode = null;
+  }
+
   release(): Promise<void> {
     const server = this.server;
     this.server = null;
+    this.inode = null;
     return new Promise((resolve) => (server ? server.close(() => resolve()) : resolve()));
   }
 
@@ -95,6 +113,7 @@ export class LeaderLock {
       server.listen(this.address, () => {
         server.unref();
         this.server = server;
+        this.inode = process.platform === "win32" ? null : fs.statSync(this.address).ino;
         resolve(true);
       });
     });

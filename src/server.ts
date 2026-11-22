@@ -409,14 +409,15 @@ export function startBackground(state: State): () => void {
   const stops: Array<() => void> = [];
   let askedAt = -Infinity;
   let yieldedAt = -Infinity;
-  lock.onYield = () => {
+  const stepDown = (why: string) => {
     for (const stop of stops.splice(0)) stop();
     state.role = "follower";
     yieldedAt = Date.now();
     seenMtime = null;
     state.emit("change");
-    log("a newer wow-seer server took over reading screenshots");
+    log(why);
   };
+  lock.onYield = () => stepDown("a newer wow-seer server took over reading screenshots");
   let published = -1;
   let seenMtime: number | null = null;
   let busy = false;
@@ -452,6 +453,10 @@ export function startBackground(state: State): () => void {
         state.role = "follower";
         state.emit("change");
         log("following the wow-seer server that is already running");
+      }
+      if (state.role === "leader" && !lock.stillHeld()) {
+        lock.abandon();
+        stepDown("another wow-seer server holds the lock now: following it");
       }
       if (state.role === "leader") {
         if (takeRequests(state, folder)) state.changed();
