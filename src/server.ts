@@ -25,6 +25,7 @@ const CAPTURE_EVERY = 200;
 const CAPTURE_MISSES = 3;
 const CAPTURE_RETRY = 10 * 60_000;
 const RECENT_FRAMES = 64;
+const TELL_AGAIN = 60_000;
 const SHARED_KEYS = ["sections", "pending", "acked", "addon", "meta", "cell", "got"] as const;
 
 export interface Section {
@@ -220,8 +221,12 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
   let cap: Capturer | null = null;
   let stopped = false, busy = false, misses = 0, offAt = -Infinity;
   let loaded: Capturer | null = null;
+  let told = { on: false, at: -Infinity };
+  // A request answered to another server stays pending here forever, so an unanswered one is reissued after a minute.
   const tell = (on: boolean) => {
-    if (state.pending.some((r) => r.kind === "capture" && r.on === on)) return;
+    const pending = state.pending.some((r) => r.kind === "capture" && r.on === on);
+    if (pending && told.on === on && Date.now() - told.at < TELL_AGAIN) return;
+    told = { on, at: Date.now() };
     state.pending = state.pending.filter((r) => r.kind !== "capture");
     state.request("capture", { on });
   };
@@ -231,6 +236,9 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
     log("capture:", why);
     tell(c !== null);
   };
+  const reissue = setInterval(() => {
+    if (state.pending.some((r) => r.kind === "capture") && Date.now() - told.at >= TELL_AGAIN) tell(told.on);
+  }, TELL_AGAIN);
   const onReceived = (msg: any, via: string) => {
     if (typeof msg.capture !== "boolean") return;
     if (process.env.WOW_SEER_DEBUG) {
@@ -283,6 +291,7 @@ export function startCapture(state: State, load: () => Promise<Capturer | string
   return () => {
     stopped = true;
     clearInterval(timer);
+    clearInterval(reissue);
     state.off("received", onReceived);
   };
 }

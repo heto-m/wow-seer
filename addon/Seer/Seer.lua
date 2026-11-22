@@ -151,7 +151,13 @@ local function CountSlots()
 end
 
 local function HandleRequest(req)
-	if type(req) ~= "table" or type(req.id) ~= "number" or req.id >= 2 ^ 31 or done[req.id] then return end
+	if type(req) ~= "table" or type(req.id) ~= "number" or req.id >= 2 ^ 31 then return end
+	-- The first ack can reach a server that has since stopped leading; answer again so the new one stops asking.
+	if done[req.id] then
+		acks[#acks + 1] = req.id
+		dirty.acks = dirty.acks or -1000
+		return
+	end
 	done[req.id] = true
 	acks[#acks + 1] = req.id
 	if req.kind == "refresh" then
