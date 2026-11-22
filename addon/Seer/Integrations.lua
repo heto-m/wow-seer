@@ -349,6 +349,7 @@ function ns.HookAddons(mark)
 	local bis = BisApi()
 	if bis and bis.OnChanged then
 		pcall(bis.OnChanged, function()
+			ns.ForgetGear()
 			mark("bags")
 			mark("player")
 		end)

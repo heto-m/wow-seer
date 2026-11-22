@@ -5,6 +5,10 @@ local POLL_ALIVE, POLL_IDLE = 10, 60
 local ALIVE_FOR = 180
 local DEBOUNCE, MIN_GAP = 2, 5
 local CONFIRM_WITHIN = 45
+local LOST_CAPTURES = 2
+-- In the background the game draws a few frames a second and a held strip can miss every capture; a screenshot
+-- freeze costs nothing there.
+local CAPTURE_MIN_FPS = 20
 local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
@@ -20,6 +24,7 @@ local msgId = 0
 local unconfirmed = {}
 local worldReady, loading = false, false
 local warned = {}
+local lostCaptures = 0
 local L = ns.L
 
 local function Say(text, ...)
@@ -146,7 +151,13 @@ local function CountSlots()
 end
 
 local function HandleRequest(req)
-	if type(req) ~= "table" or type(req.id) ~= "number" or req.id >= 2 ^ 31 or done[req.id] then return end
+	if type(req) ~= "table" or type(req.id) ~= "number" or req.id >= 2 ^ 31 then return end
+	-- The first ack can reach a server that has since stopped leading; answer again so the new one stops asking.
+	if done[req.id] then
+		acks[#acks + 1] = req.id
+		dirty.acks = dirty.acks or -1000
+		return
+	end
 	done[req.id] = true
 	acks[#acks + 1] = req.id
 	if req.kind == "refresh" then
@@ -159,6 +170,9 @@ local function HandleRequest(req)
 	elseif req.kind == "prices" then
 		ns.wantedPrices = { items = type(req.items) == "table" and req.items or {}, bags = req.bags == true }
 		dirty.prices = -1000
+	elseif req.kind == "capture" then
+		ns.Strip.capture = req.on == true
+		db.capture = ns.Strip.capture
 	elseif req.kind == "update" and type(req.version) == "string" then
 		NewerVersion(req.version)
 	elseif req.kind == "config" and type(req.cell) == "number" and req.cell >= 1 and req.cell <= 4 then
@@ -190,7 +204,10 @@ local function Poll()
 		if not Alive() then MarkAll() end
 		serverSeen = GetTime()
 	end
-	for _, id in ipairs(type(inbox.got) == "table" and inbox.got or {}) do unconfirmed[id] = nil end
+	for _, id in ipairs(type(inbox.got) == "table" and inbox.got or {}) do
+		if unconfirmed[id] and unconfirmed[id].captured then lostCaptures = 0 end
+		unconfirmed[id] = nil
+	end
 	for _, req in ipairs(type(inbox.reqs) == "table" and inbox.reqs or {}) do HandleRequest(req) end
 end
 
@@ -200,6 +217,15 @@ local function ResendLost()
 		if now - sent.at > CONFIRM_WITHIN then
 			unconfirmed[id] = nil
 			for _, s in ipairs(sent.sections) do Mark(s) end
+			if sent.captured then
+				ns.Strip.shotsLeft = 1
+				lostCaptures = lostCaptures + 1
+				-- An older server, or one that lost the window, never says so: stop waiting on captures.
+				if lostCaptures >= LOST_CAPTURES then
+					ns.Strip.capture = false
+					db.capture = false
+				end
+			end
 		end
 	end
 end
@@ -213,65 +239,158 @@ local function Ready(now)
 end
 
 local COMPRESS_FROM = 200
+-- In game a deflate call costs ~3 ms plus ~0.5 ms per KB, so big messages are deflated in slices, one per frame.
+local SLICE = 4096
 
--- "Z" marks raw deflate for the server; JSON never starts with it.
-local function Compress(text)
-	local lib = ns.LibDeflate or (LibStub and LibStub("LibDeflate", true))
-	if not lib or #text < COMPRESS_FROM then return text end
-	local ok, packed = pcall(lib.CompressDeflate, lib, text, { level = 1 })
-	if ok and type(packed) == "string" and #packed + 1 < #text then return "Z" .. packed end
-	return text
+local function Deflater()
+	return ns.LibDeflate or (LibStub and LibStub("LibDeflate", true))
 end
 
-local function Push(force)
-	local now = GetTime()
-	if ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
-	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
-	if not PngReady() then return end
-	local list = Ready(now)
-	if #list == 0 and not dirty.acks then return end
-	local sections = {}
+-- Captured strips skip deflate until a message needs a second part.
+local function WantsDeflate(text, captured)
+	return Deflater() ~= nil and #text >= (captured and ns.Strip.Capacity() or COMPRESS_FROM)
+end
+
+local Clock = debugprofilestop or function() return GetTime() * 1000 end
+
+-- Splices the per-section JSON already kept in db.saved instead of encoding every section twice.
+local function Message(envelope, list)
+	local parts = {}
 	for _, s in ipairs(list) do
-		local data = Collect(s)
-		if data ~= nil then
-			sections[s] = data
-			db.saved[s] = ns.ToJson(data)
-		end
+		if db.saved[s] then parts[#parts + 1] = ns.ToJson(s) .. ":" .. db.saved[s] end
 	end
-	msgId = (db.msgId or 0) % 65535 + 1
-	db.msgId = msgId
-	local sent = acks
-	acks = {}
-	local text = ns.ToJson({
-		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
-		build = (GetBuildInfo()), version = VERSION, acks = sent, sections = sections,
-	})
-	text = Compress(text)
-	local started = GetTime()
-	for _, s in ipairs(list) do dirty[s] = nil end
-	dirty.acks = nil
-	lastPush = now
-	local ok = ns.Strip.Send(msgId, text, function(success, why)
+	return ns.ToJson(envelope):sub(1, -2) .. ',"sections":{' .. table.concat(parts, ",") .. "}}"
+end
+
+local function Requeue(list, sent, at)
+	for _, s in ipairs(list) do
+		if not dirty[s] then dirty[s] = at end
+	end
+	for _, id in ipairs(sent or {}) do acks[#acks + 1] = id end
+end
+
+local stage
+local stager = CreateFrame("Frame")
+stager:Hide()
+
+local function Transmit(st, text)
+	stage = nil
+	stager:Hide()
+	local cost, list, sections, sent = st.cost, st.list, st.sections, st.sent
+	local id = st.id
+	local ok = ns.Strip.Send(id, text, function(success, why)
 		if success then
-			ns.lastSent = { bytes = #text, at = GetTime(), sections = list }
-			unconfirmed[msgId] = { at = GetTime(), sections = list }
+			ns.lastSent = { bytes = #text, at = GetTime(), sections = list, cost = cost, strip = ns.Strip.lastStats }
+			unconfirmed[id] = { at = GetTime(), sections = list, captured = st.captured }
 			if sections.items then wipe(ns.wantedItems) end
 			if sections.prices then ns.wantedPrices = nil end
 			return
 		end
-		for _, s in ipairs(list) do
-			if not dirty[s] then dirty[s] = started end
-		end
-		for _, id in ipairs(sent) do acks[#acks + 1] = id end
+		Requeue(list, sent, st.started)
 		if why ~= "combat" and not warned[why] then
 			warned[why] = true
 			Say(L.SEND_FAILED, tostring(why))
 		end
+	end, st.captured)
+	if not ok then Requeue(list, sent, st.started) end
+end
+
+local function Build(st)
+	msgId = (db.msgId or 0) % 65535 + 1
+	db.msgId = msgId
+	st.id = msgId
+	st.sent = acks
+	acks = {}
+	dirty.acks = nil
+	local at = Clock()
+	local text = Message({
+		seer = 1, msg = msgId, t = time(), slot = nextSlot, slots = slotCount,
+		build = (GetBuildInfo()), version = VERSION, acks = st.sent, capture = ns.Strip.capture, fallback = st.fallback,
+	}, st.sending)
+	st.cost.json = st.cost.json + Clock() - at
+	st.cost.raw = #text
+	st.cost.compress = 0
+	if not WantsDeflate(text, st.captured) then return Transmit(st, text) end
+	st.text, st.pos, st.slices = text, 1, {}
+end
+
+-- "Y" marks length-prefixed raw-deflate slices for the server; JSON never starts with it.
+local function PackSlice(st)
+	local lib = Deflater()
+	local at = Clock()
+	local ok, packed = pcall(lib.CompressDeflate, lib, st.text:sub(st.pos, st.pos + SLICE - 1), { level = 1 })
+	st.cost.compress = math.max(st.cost.compress, Clock() - at)
+	if not ok or type(packed) ~= "string" then return Transmit(st, st.text) end
+	local n = #packed
+	st.slices[#st.slices + 1] = string.char(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256) .. packed
+	st.pos = st.pos + SLICE
+	if st.pos <= #st.text then return end
+	local text = "Y" .. table.concat(st.slices)
+	Transmit(st, #text < #st.text and text or st.text)
+end
+
+local function CollectNext(st)
+	local s = st.list[st.i]
+	st.i = st.i + 1
+	dirty[s] = nil
+	st.done[#st.done + 1] = s
+	local at = Clock()
+	local data = Collect(s)
+	local took = Clock() - at
+	st.cost.collect = st.cost.collect + took
+	if took > st.cost.slowest then st.cost.slowest, st.cost.slowestName = took, s end
+	if data ~= nil then
+		at = Clock()
+		st.sections[s] = true
+		st.sending[#st.sending + 1] = s
+		db.saved[s] = ns.ToJson(data)
+		st.cost.json = st.cost.json + Clock() - at
+	end
+end
+
+-- One step per frame (a section, the message, a deflate slice): a full send never lands on a single frame.
+stager:SetScript("OnUpdate", function(self)
+	local st = stage
+	local ok, err = pcall(function()
+		if InCombatLockdown() then
+			stage = nil
+			self:Hide()
+			Requeue(st.done, st.sent, st.started)
+		elseif st.text then
+			PackSlice(st)
+		elseif st.list[st.i] then
+			CollectNext(st)
+		else
+			Build(st)
+		end
 	end)
 	if not ok then
-		for _, s in ipairs(list) do dirty[s] = started end
-		for _, id in ipairs(sent) do acks[#acks + 1] = id end
+		stage = nil
+		self:Hide()
+		if st then Requeue(st.done, st.sent, st.started) end
+		if not warned.stage then
+			warned.stage = true
+			Say(Red(L.ERROR) .. " " .. tostring(err))
+		end
 	end
+end)
+
+local function Push(force)
+	local now = GetTime()
+	if stage or ns.Strip.Busy() or InCombatLockdown() or not worldReady then return end
+	if not force and (not Alive() or db.paused or now - lastPush < MIN_GAP) then return end
+	local fallback = ns.Strip.shotsLeft > 0
+	local captured = ns.Strip.Capturing() and (not GetFramerate or GetFramerate() >= CAPTURE_MIN_FPS)
+	if not captured and not PngReady() then return end
+	local list = Ready(now)
+	if #list == 0 and not dirty.acks then return end
+	if fallback then ns.Strip.shotsLeft = ns.Strip.shotsLeft - 1 end
+	lastPush = now
+	stage = {
+		list = list, i = 1, done = {}, sending = {}, sections = {}, started = now, captured = captured, fallback = fallback,
+		cost = { collect = 0, json = 0, slowest = 0 },
+	}
+	stager:Show()
 end
 
 local function Tick()
@@ -310,6 +429,11 @@ local EVENTS = {
 	TRADE_SKILL_LIST_UPDATE = { "profession" },
 	MERCHANT_UPDATE = { "merchant" },
 	PLAYERBANKSLOTS_CHANGED = { "bank" },
+}
+
+local FORGET_GEAR = {
+	PLAYER_EQUIPMENT_CHANGED = true, PLAYER_LEVEL_UP = true, CHARACTER_POINTS_CHANGED = true,
+	ACTIVE_TALENT_GROUP_CHANGED = true, TRAIT_CONFIG_UPDATED = true,
 }
 
 local OPEN = {
@@ -371,6 +495,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
 			db = SeerDB
 			db.saved = db.saved or {}
 			ns.Strip.cell = db.cell or 1
+			ns.Strip.capture = db.capture == true
 			ns.debug = db.debug
 			ns.Strip.rows = db.rows or ns.Strip.rows
 			ns.Strip.pre = db.pre or ns.Strip.pre
@@ -379,6 +504,11 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
 			C_Timer.NewTicker(1, Tick)
 			pcall(ns.HookAddons, Mark)
 		elseif event == "PLAYER_ENTERING_WORLD" then
+			-- Capture mode lasts across /reload only: after a login the server may be another one.
+			if arg1 then
+				ns.Strip.capture = false
+				db.capture = false
+			end
 			for _, s in ipairs(ALWAYS) do Mark(s) end
 			C_Timer.After(10, ShareVersion)
 			C_Timer.After(8, function() if not loading then worldReady = true end end)
@@ -409,6 +539,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
 			ns[o[1]] = o[2]
 			if o[3] then Mark(o[3]) end
 		elseif EVENTS[event] then
+			if FORGET_GEAR[event] then ns.ForgetGear() end
 			for _, s in ipairs(EVENTS[event]) do Mark(s) end
 		else
 			OnAuction(event, arg1)
@@ -462,6 +593,9 @@ local function Status()
 	end
 	if ns.lastSent then
 		Say(L.LAST_SENT, ns.lastSent.bytes, GetTime() - ns.lastSent.at, table.concat(ns.lastSent.sections, ", "))
+		local c, st = ns.lastSent.cost, ns.lastSent.strip or {}
+		Say(L.COST, c.collect, c.slowestName or "-", c.slowest, c.json, c.compress, c.raw, ns.lastSent.bytes,
+			st.build or 0, st.shots or 0, st.hitch or 0, st.usual or 0)
 	end
 end
 

@@ -112,6 +112,29 @@ function collect.equipment()
 	return items
 end
 
+-- Tooltip, Pawn and BiS cost most of a bag scan; Seer.lua forgets them when gear, level or spec change.
+local GEAR_FOR = 120
+local gearCache = {}
+
+function ns.ForgetGear()
+	wipe(gearCache)
+end
+
+local function GearFacts(bag, slot, info)
+	local key = tostring(info.hyperlink or info.itemID) .. (info.isBound and "#bound" or "")
+	local c = gearCache[key]
+	if c and GetTime() - c.at < GEAR_FOR then return c end
+	c = {
+		at = GetTime(),
+		tooltip = TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetBagItem, bag, slot)),
+		loc = EquipLoc(info.itemID),
+		pawn = ns.PawnInfo and Try(ns.PawnInfo, info.hyperlink),
+		bis = ns.BisGain and Try(ns.BisGain, info.hyperlink),
+	}
+	gearCache[key] = c
+	return c
+end
+
 local function Container(bags)
 	local out = {}
 	for _, bag in ipairs(bags) do
@@ -134,10 +157,8 @@ local function Container(bags)
 					bound = info.isBound,
 				}
 				if Equippable(info.itemID) then
-					item.tooltip = TooltipLines(Try(C_TooltipInfo and C_TooltipInfo.GetBagItem, bag, slot))
-					item.loc = EquipLoc(info.itemID)
-					item.pawn = ns.PawnInfo and Try(ns.PawnInfo, info.hyperlink)
-					item.bis = ns.BisGain and Try(ns.BisGain, info.hyperlink)
+					local facts = GearFacts(bag, slot, info)
+					item.tooltip, item.loc, item.pawn, item.bis = facts.tooltip, facts.loc, facts.pawn, facts.bis
 				end
 				entry.items[#entry.items + 1] = item
 			end

@@ -5,13 +5,15 @@ local BITS = 2
 local COLS_MAX, ROWS_MAX = 1024, 16
 local HEADER_X, HEADER_CELLS = 68, 54
 local TAIL_X = HEADER_X + 4 * HEADER_CELLS
-local BUILD_PER_FRAME = 4096
+local BUILD_PER_FRAME = 2048
 -- Screenshots are named by the second; two in the same second overwrite each other.
 local PART_GAP = 1.05
 local TIMEOUT = 10
+-- The server captures the game window 5 times a second; 0.5 s still missed about one strip in 17.
+local HOLD, HOLD_FRAMES = 0.75, 3
 
 -- 16 rows (16384 textures) gave screenshots with no UI at all; 8 work.
-local Strip = { cell = 1, rows = 8, pre = 1 }
+local Strip = { cell = 1, rows = 8, pre = 1, capture = false, shotsLeft = 0 }
 ns.Strip = Strip
 
 local frame, pools = nil, { column = {}, sync = {}, header = {}, tail = {}, payload = {} }
@@ -36,16 +38,30 @@ local function Cell(pool, i)
 	return t
 end
 
+local placedX, placedY, placedSize, shown = {}, {}, {}, {}
+
 local function Place(t, x, y, size, r, g, b)
-	t:ClearAllPoints()
-	t:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
-	t:SetSize(size, size)
+	if placedX[t] ~= x or placedY[t] ~= y or placedSize[t] ~= size then
+		t:ClearAllPoints()
+		t:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
+		t:SetSize(size, size)
+		placedX[t], placedY[t], placedSize[t] = x, y, size
+	end
 	t:SetColorTexture(r, g, b, 1)
-	t:Show()
+	if not shown[t] then
+		t:Show()
+		shown[t] = true
+	end
 end
 
 local function HideFrom(pool, from)
-	for i = from, #pool do pool[i]:Hide() end
+	for i = from, #pool do
+		local t = pool[i]
+		if shown[t] then
+			t:Hide()
+			shown[t] = false
+		end
+	end
 end
 
 local function EnsureFrame()
@@ -133,6 +149,17 @@ end
 
 local driver = CreateFrame("Frame")
 driver:Hide()
+local Clock = debugprofilestop or function() return GetTime() * 1000 end
+
+-- Runs past Finish: the encode stall can land in any frame up to a few after SCREENSHOT_SUCCEEDED.
+local watch = CreateFrame("Frame")
+local watchStats, watchFrames, watchEventAt
+watch:Hide()
+watch:SetScript("OnUpdate", function(self, elapsed)
+	watchStats.hitch = math.max(watchStats.hitch or 0, elapsed * 1000)
+	watchFrames = watchFrames + 1
+	if (watchEventAt and watchFrames >= watchEventAt + 3) or watchFrames >= 600 then self:Hide() end
+end)
 
 local function Debug(text)
 	if ns.debug then print(string.format("|cff9b7bffSeer|r %.2f %s", GetTime(), text)) end
@@ -162,15 +189,18 @@ local function StartPart()
 	driver:Show()
 end
 
-driver:SetScript("OnUpdate", function()
+driver:SetScript("OnUpdate", function(_, elapsed)
 	local ok, err = pcall(function()
 		if not job then driver:Hide() return end
+		job.lastElapsed = elapsed
 		if GetTime() - job.started > TIMEOUT then Finish(false, "timeout") return end
 		if job.phase ~= "taken" and InCombatLockdown() then Finish(false, "combat") return end
 		local p = job.parts[job.index]
 		if job.phase == "build" then
 			local to = math.min(p.groups, p.built + BUILD_PER_FRAME / 4)
+			local at = Clock()
 			BuildPayload(p, p.built + 1, to)
+			job.stats.build = math.max(job.stats.build, Clock() - at)
 			p.built = to
 			if to >= p.groups then
 				frame:Show()
@@ -181,9 +211,24 @@ driver:SetScript("OnUpdate", function()
 			end
 		elseif job.phase == "show" and job.waited < Strip.pre - 1 then
 			job.waited = job.waited + 1
+		elseif job.phase == "show" and job.captured then
+			job.phase = "held"
+			job.heldUntil = GetTime() + HOLD
+			job.heldFrames = 0
+		elseif job.phase == "held" then
+			job.heldFrames = job.heldFrames + 1
+			if GetTime() < job.heldUntil or job.heldFrames < HOLD_FRAMES then return end
+			if job.index >= #job.parts then Finish(true) return end
+			job.index = job.index + 1
+			StartPart()
 		elseif job.phase == "show" then
 			hideStatusUntil = GetTime() + 3
+			local st = job.stats
+			st.usual = math.max(st.usual or 0, (job.lastElapsed or 0) * 1000)
+			st.shots = st.shots + 1
 			Screenshot()
+			watchStats, watchFrames, watchEventAt = st, 0, nil
+			watch:Show()
 			Debug("screenshot called")
 			job.phase = "taken"
 			job.hideNext = true
@@ -200,6 +245,7 @@ function Strip.OnScreenshot(succeeded)
 	if ActionStatus and ActionStatus:IsShown() then ActionStatus:Hide() end
 	hideStatusUntil = GetTime() + 3
 	Debug("screenshot event " .. tostring(succeeded))
+	watchEventAt = watchFrames
 	if not succeeded then Finish(false, "screenshot failed") return end
 	if job.index >= #job.parts then Finish(true) return end
 	job.index = job.index + 1
@@ -209,11 +255,15 @@ function Strip.OnScreenshot(succeeded)
 	end)
 end
 
+function Strip.Capturing()
+	return Strip.capture and Strip.shotsLeft <= 0
+end
+
 function Strip.Busy()
 	return job ~= nil
 end
 
-function Strip.Send(msg, text, done)
+function Strip.Send(msg, text, done, captured)
 	if job then return false end
 	local cols = Strip.Columns()
 	local per = floor(cols * math.min(Strip.rows, ROWS_MAX) * 3 * BITS / 8 / 3) * 3
@@ -223,7 +273,8 @@ function Strip.Send(msg, text, done)
 		parts[k] = { msg = msg % 65536, part = k, parts = n, cols = cols, cell = Strip.cell,
 			data = text:sub((k - 1) * per + 1, k * per) }
 	end
-	job = { parts = parts, index = 1, done = done }
+	job = { parts = parts, index = 1, done = done, captured = captured, stats = { build = 0, shots = 0 } }
+	Strip.lastStats = job.stats
 	StartPart()
 	return true
 end

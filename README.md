@@ -4,18 +4,42 @@ Lets any AI (Claude Code, Claude Desktop, a local model) read your WoW: Forever 
 
 ## How it works
 
-The addon draws the state as a small colour strip and takes a screenshot (visible for ~40 ms). The server decodes the strip and deletes the image. Requests go the other way through small load-on-demand addons ("slots") that the addon checks every 10 s; `/reload` renews them. Like Questie, the addon tells your guild and group its version number, and says in chat when someone has a newer Seer; the server does the same when it is newer than the addon.
+The addon draws the state as a small colour strip in the top-left corner for half a second, and the server reads it straight from the game window, so the game never stops to save a screenshot. If the server can't read the window (no window access on that system, a covered or minimised game), the addon falls back to taking a screenshot, which the server decodes and deletes. Requests go the other way through small load-on-demand addons ("slots") that the addon checks every 10 s; `/reload` renews them. Like Questie, the addon tells your guild and group its version number, and says in chat when someone has a newer Seer; the server does the same when it is newer than the addon.
+
+`/seer status` in game shows what the last send cost in milliseconds.
 
 ## Install
 
-Needs Node.js 20+.
+Seer has two parts: the addon, and a small program (the MCP server) that your AI client starts. Both come from one command.
 
-```sh
-npx -y wow-seer install                           # with the game closed
-claude mcp add wow-seer -- npx -y wow-seer serve  # or run `npx -y wow-seer serve` as a stdio server in any client
-```
+### Windows, step by step
 
-Set `WOW_DIR` if your `_forever_` folder isn't in a default place. Seer needs screenshots saved as PNG and asks to switch if they are not (`/seer png` does it too). In game, `/seer` shows the status.
+1. Install **Node.js LTS** from [nodejs.org](https://nodejs.org) with the default options.
+2. Close the game.
+3. Open the Start menu, type **PowerShell**, open it, paste this and press Enter:
+   ```
+   npx -y wow-seer install
+   ```
+   Wait for `Installed Seer and 1000 request slots`. If you got Seer from CurseForge, still do this step: it adds the request slots, which an addon manager can't install.
+4. Connect your AI client:
+   - **Claude Desktop**: Settings → Developer → Edit Config. Put this in `claude_desktop_config.json`, save, and restart Claude Desktop:
+     ```json
+     {
+       "mcpServers": {
+         "wow-seer": { "command": "cmd", "args": ["/c", "npx", "-y", "wow-seer@latest", "serve"] }
+       }
+     }
+     ```
+     If the file already has an `mcpServers` block, add the `"wow-seer"` line inside it.
+   - **Claude Code**: `claude mcp add wow-seer -- npx -y wow-seer@latest serve`
+   - **Any other MCP client**: a stdio server with the command `npx -y wow-seer@latest serve`.
+5. Start the game and type `/seer`: it should say the server is connected. Then ask your AI something like "what's in my bags?".
+
+### macOS and Linux
+
+Same steps in a terminal. In the Claude Desktop config use `"command": "npx", "args": ["-y", "wow-seer@latest", "serve"]`.
+
+Set `WOW_DIR` if your `_forever_` folder isn't in a default place. When Seer has to fall back to screenshots it needs them saved as PNG, and asks to switch if they are not (`/seer png` does it too).
 
 ## Tools
 

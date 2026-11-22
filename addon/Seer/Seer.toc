@@ -13,7 +13,7 @@
 ## Notes-zhCN: 让 AI 通过 wow-seer MCP 服务器读取你的游戏状态。
 ## Notes-zhTW: 讓 AI 透過 wow-seer MCP 伺服器讀取你的遊戲狀態。
 ## Author: wow-seer
-## Version: 0.5.4
+## Version: 0.6.0
 ## X-Curse-Project-ID: 1809157
 ## OptionalDeps: Auctionator, Questie, QuestieDB, Pawn, Polestar, WhatsTraining, SkillUpForever, ForeverLevelingBiS, NovaInstanceTracker, DataStore, DataStore_Characters, DataStore_Mails
 ## SavedVariables: SeerDB

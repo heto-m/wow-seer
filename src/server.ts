@@ -3,22 +3,41 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 
-import { Assembler, decode, NotSeer } from "./frame.js";
+import { type Capturer, loadCapturer } from "./capture.js";
+import { Assembler, BadFrame, decode, type Header, NotSeer, Raw } from "./frame.js";
 import * as game from "./game.js";
 import { LeaderLock, readJson, sharedDir, writeJson } from "./shared.js";
 import { compareVersions, VERSION, versionWarning } from "./version.js";
 
 const SCAN_EVERY = 300;
 const YIELD_COOLDOWN = 10_000;
+const ASK_AGAIN = 60_000;
 const DEFLATED = 0x5a;
+const SLICED = 0x59;
 
+// "Z": one raw-deflate stream (addons before 0.6); "Y": 3-byte length-prefixed raw-deflate slices.
 export function messageText(buf: Buffer): string {
-  return (buf[0] === DEFLATED ? zlib.inflateRawSync(buf.subarray(1)) : buf).toString("utf8");
+  if (buf[0] === DEFLATED) return zlib.inflateRawSync(buf.subarray(1)).toString("utf8");
+  if (buf[0] !== SLICED) return buf.toString("utf8");
+  const out: Buffer[] = [];
+  for (let i = 1; i < buf.length;) {
+    if (i + 3 > buf.length) throw new Error("cut slice header");
+    const n = (buf[i] << 16) | (buf[i + 1] << 8) | buf[i + 2];
+    i += 3;
+    out.push(zlib.inflateRawSync(buf.subarray(i, i + n)));
+    i += n;
+  }
+  return Buffer.concat(out).toString("utf8");
 }
 
 const SYNC_EVERY = 500;
 const HEARTBEAT_EVERY = 30;
 const FAILS_BEFORE_BIGGER_CELLS = 2;
+const CAPTURE_EVERY = 200;
+const CAPTURE_MISSES = 3;
+const CAPTURE_RETRY = 10 * 60_000;
+const RECENT_FRAMES = 64;
+const TELL_AGAIN = 60_000;
 const SHARED_KEYS = ["sections", "pending", "acked", "addon", "meta", "cell", "got"] as const;
 
 export interface Section {
@@ -32,12 +51,16 @@ export function now(): number {
 }
 
 export function log(...args: unknown[]): void {
-  process.stderr.write(["wow-seer:", ...args.map(String)].join(" ") + "\n");
+  const stamp = process.env.WOW_SEER_DEBUG ? [new Date().toISOString().slice(11, 23)] : [];
+  process.stderr.write(["wow-seer:", ...stamp, ...args.map(String)].join(" ") + "\n");
 }
 
 export class State extends EventEmitter {
   sections: Record<string, Section> = {};
-  meta = { frames: 0, bad_frames: 0, last_frame: null as number | null, last_error: null as string | null };
+  meta = {
+    frames: 0, bad_frames: 0, last_frame: null as number | null, last_error: null as string | null,
+    capture: null as string | null,
+  };
   addon: any = {};
   pending: any[] = [];
   acked: number[] = [];
@@ -45,6 +68,7 @@ export class State extends EventEmitter {
   nextId = (Math.floor(now()) % 10_000_000) * 100 + (process.pid % 10);
   assembler = new Assembler();
   seen = new Set<string>();
+  recentFrames = new Set<string>();
   undeleted = new Set<string>();
   cell = 1;
   got: number[] = [];
@@ -94,7 +118,10 @@ export class State extends EventEmitter {
     const acks = new Set<number>(msg.acks || []);
     this.pending = this.pending.filter((r) => !acks.has(r.id));
     this.acked = [...this.acked, ...[...acks].sort((a, b) => a - b)].slice(-200);
-    this.addon = { slot: msg.slot, slots: msg.slots, build: msg.build, version: msg.version, last_message: t };
+    this.addon = {
+      slot: msg.slot, slots: msg.slots, build: msg.build, version: msg.version, last_message: t,
+      capture: msg.capture === true,
+    };
     const warning = versionWarning(msg.version);
     if (warning && !this.warned.has(warning)) {
       this.warned.add(warning);
@@ -155,20 +182,130 @@ export function processFile(state: State, file: string): boolean | null {
     discard(state, file);
     return true;
   }
+  discard(state, file);
+  accept(state, header, payload, "screenshot");
+  return true;
+}
+
+// The addon holds a strip up long enough for several captures, so the same frame arrives more than once.
+function accept(state: State, header: Header, payload: Buffer, via: "screenshot" | "capture"): void {
+  const key = `${header.msg}/${header.part}/${header.parts}/${header.adler}`;
+  if (state.recentFrames.has(key)) return;
+  state.recentFrames.add(key);
+  if (state.recentFrames.size > RECENT_FRAMES) state.recentFrames.delete(state.recentFrames.values().next().value as string);
   state.meta.frames += 1;
   state.meta.last_frame = now();
-  discard(state, file);
   const text = state.assembler.add(header, payload);
   if (text !== null) {
+    let msg;
     try {
-      state.apply(JSON.parse(messageText(text)));
+      msg = JSON.parse(messageText(text));
     } catch (e) {
       state.meta.last_error = `message ${header.msg}: ${(e as Error).message}`;
       log("bad message", state.meta.last_error);
     }
+    if (msg) {
+      state.apply(msg);
+      state.emit("received", msg, via);
+    }
   }
   state.changed();
+}
+
+export function processImage(state: State, img: Raw): boolean {
+  let header, payload;
+  try {
+    ({ header, payload } = decode(img));
+  } catch (e) {
+    if (e instanceof NotSeer) return false;
+    if (!(e instanceof BadFrame)) throw e;
+    log("captured a broken strip:", e.message);
+    return false;
+  }
+  if (process.env.WOW_SEER_DEBUG) log(`captured msg ${header.msg} part ${header.part}/${header.parts}`);
+  accept(state, header, payload, "capture");
   return true;
+}
+
+// Reading the strip from the game window spares the game the Screenshot() freeze; the addon falls back to
+// Screenshot() when the server says it can't, and the server stops asking when captures keep missing.
+export function startCapture(state: State, load: () => Promise<Capturer | string> = loadCapturer): () => void {
+  let cap: Capturer | null = null;
+  let stopped = false, busy = false, misses = 0, offAt = -Infinity;
+  let loaded: Capturer | null = null;
+  let told = { on: false, at: -Infinity };
+  // A request answered to another server stays pending here forever, so an unanswered one is reissued after a minute.
+  const tell = (on: boolean) => {
+    const pending = state.pending.some((r) => r.kind === "capture" && r.on === on);
+    if (pending && told.on === on && Date.now() - told.at < TELL_AGAIN) return;
+    told = { on, at: Date.now() };
+    state.pending = state.pending.filter((r) => r.kind !== "capture");
+    state.request("capture", { on });
+  };
+  const setCapture = (c: Capturer | null, why: string) => {
+    cap = c;
+    state.meta.capture = why;
+    log("capture:", why);
+    tell(c !== null);
+  };
+  const reissue = setInterval(() => {
+    if (state.pending.some((r) => r.kind === "capture") && Date.now() - told.at >= TELL_AGAIN) tell(told.on);
+  }, TELL_AGAIN);
+  const onReceived = (msg: any, via: string) => {
+    if (typeof msg.capture !== "boolean") return;
+    if (process.env.WOW_SEER_DEBUG) {
+      const why = msg.fallback ? "resent after a miss" : msg.capture ? "background" : "screenshot mode";
+      log(`msg ${msg.msg} by ${via}` + (via === "screenshot" ? ` (${why}; captures so far ${grabs}, empty ${empty})` : ""));
+    }
+    if (via === "capture") misses = 0;
+    if (cap && via === "screenshot" && msg.fallback === true && ++misses >= CAPTURE_MISSES) {
+      offAt = Date.now();
+      setCapture(null, "off: the game window did not show the strip, so the addon fell back to screenshots");
+      return;
+    }
+    if (!cap && loaded && Date.now() - offAt > CAPTURE_RETRY) {
+      misses = 0;
+      setCapture(loaded, "on");
+      return;
+    }
+    if ((msg.capture === true) !== (cap !== null)) tell(cap !== null);
+  };
+  state.on("received", onReceived);
+  void load().then((c) => {
+    if (stopped) return;
+    if (typeof c === "string") {
+      setCapture(null, `off: ${c}`);
+    } else {
+      loaded = c;
+      setCapture(c, "on");
+    }
+  });
+  const debug = !!process.env.WOW_SEER_DEBUG;
+  let lastGrab = 0, empty = 0, grabs = 0;
+  const timer = setInterval(async () => {
+    if (!cap || busy || stopped) return;
+    busy = true;
+    try {
+      const at = Date.now();
+      if (debug && lastGrab && at - lastGrab > 400) log(`capture gap ${at - lastGrab} ms`);
+      lastGrab = at;
+      grabs += 1;
+      const img = await cap.grab();
+      if (debug && Date.now() - at > 100) log(`slow capture ${Date.now() - at} ms`);
+      if (!img) empty += 1;
+      if (img && !stopped) processImage(state, img);
+    } catch (e) {
+      log("capture failed:", (e as Error).message);
+    } finally {
+      busy = false;
+    }
+  }, CAPTURE_EVERY);
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+    clearInterval(reissue);
+    state.off("received", onReceived);
+  };
 }
 
 function remove(file: string): boolean {
@@ -291,16 +428,17 @@ export function startBackground(state: State): () => void {
   const stateFile = path.join(folder, "state.json");
   const lock = new LeaderLock(folder, VERSION);
   const stops: Array<() => void> = [];
-  let askedToYield = false;
+  let askedAt = -Infinity;
   let yieldedAt = -Infinity;
-  lock.onYield = () => {
+  const stepDown = (why: string) => {
     for (const stop of stops.splice(0)) stop();
     state.role = "follower";
     yieldedAt = Date.now();
     seenMtime = null;
     state.emit("change");
-    log("a newer wow-seer server took over reading screenshots");
+    log(why);
   };
+  lock.onYield = () => stepDown("a newer wow-seer server took over reading screenshots");
   let published = -1;
   let seenMtime: number | null = null;
   let busy = false;
@@ -308,8 +446,8 @@ export function startBackground(state: State): () => void {
 
   const takeLead = async () => {
     if (await lock.acquire()) return true;
-    if (askedToYield) return false;
-    askedToYield = true;
+    if (Date.now() - askedAt < ASK_AGAIN) return false;
+    askedAt = Date.now();
     return (await lock.askToYield()) && (await waitForLock());
   };
   const waitForLock = async () => {
@@ -331,11 +469,15 @@ export function startBackground(state: State): () => void {
         state.role = "leader";
         state.emit("change");
         log("leading: reading screenshots");
-        stops.push(startWatch(state), startHeartbeat(state));
+        stops.push(startWatch(state), startHeartbeat(state), startCapture(state));
       } else if (state.role === null) {
         state.role = "follower";
         state.emit("change");
         log("following the wow-seer server that is already running");
+      }
+      if (state.role === "leader" && !lock.stillHeld()) {
+        lock.abandon();
+        stepDown("another wow-seer server holds the lock now: following it");
       }
       if (state.role === "leader") {
         if (takeRequests(state, folder)) state.changed();

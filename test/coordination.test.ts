@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
+import "./lua.js";
 import { startBackground, State } from "../src/server.js";
 import { LeaderLock } from "../src/shared.js";
 
@@ -78,6 +79,31 @@ test("an older leader steps down for a newer server, not for an equal one", asyn
     assert.ok(taken);
     await newer.release();
   } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("a leader whose socket file was replaced steps down instead of leading twice", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seer-split-"));
+  process.env.WOW_SEER_DIR = tmp;
+  process.env.WOW_DIR = path.join(tmp, "missing");
+  const state = new State();
+  const stop = startBackground(state);
+  try {
+    const end = Date.now() + 5000;
+    while (state.role !== "leader" && Date.now() < end) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(state.role, "leader");
+    if (process.platform !== "win32") {
+      const sock = path.join(tmp, "leader.sock");
+      fs.unlinkSync(sock);
+      fs.writeFileSync(sock, "");
+      while (state.role === "leader" && Date.now() < end + 3000) await new Promise((r) => setTimeout(r, 50));
+      assert.equal(state.role, "follower");
+    }
+  } finally {
+    stop();
+    delete process.env.WOW_SEER_DIR;
+    delete process.env.WOW_DIR;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
