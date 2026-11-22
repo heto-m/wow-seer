@@ -9,8 +9,8 @@ local BUILD_PER_FRAME = 2048
 -- Screenshots are named by the second; two in the same second overwrite each other.
 local PART_GAP = 1.05
 local TIMEOUT = 10
--- The server captures the game window 4 times a second; the strip stays up long enough for at least one.
-local HOLD, HOLD_FRAMES = 0.5, 3
+-- The server captures the game window 5 times a second; 0.5 s still missed about one strip in 17.
+local HOLD, HOLD_FRAMES = 0.75, 3
 
 -- 16 rows (16384 textures) gave screenshots with no UI at all; 8 work.
 local Strip = { cell = 1, rows = 8, pre = 1, capture = false, shotsLeft = 0 }

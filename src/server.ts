@@ -21,7 +21,7 @@ export function messageText(buf: Buffer): string {
 const SYNC_EVERY = 500;
 const HEARTBEAT_EVERY = 30;
 const FAILS_BEFORE_BIGGER_CELLS = 2;
-const CAPTURE_EVERY = 250;
+const CAPTURE_EVERY = 200;
 const CAPTURE_MISSES = 3;
 const CAPTURE_RETRY = 10 * 60_000;
 const RECENT_FRAMES = 64;
@@ -38,7 +38,8 @@ export function now(): number {
 }
 
 export function log(...args: unknown[]): void {
-  process.stderr.write(["wow-seer:", ...args.map(String)].join(" ") + "\n");
+  const stamp = process.env.WOW_SEER_DEBUG ? [new Date().toISOString().slice(11, 23)] : [];
+  process.stderr.write(["wow-seer:", ...stamp, ...args.map(String)].join(" ") + "\n");
 }
 
 export class State extends EventEmitter {
