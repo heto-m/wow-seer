@@ -157,3 +157,9 @@ test("the server turns capture off when it can't, or when the addon keeps fallin
   assert.match(state.meta.capture!, /^off: /);
   assert.deepEqual(state.pending.filter((r) => r.kind === "capture").map((r) => r.on), [false]);
 });
+
+test("node-screenshots loads on this system", async () => {
+  const name = "node-screenshots";
+  const lib: any = await import(name);
+  assert.equal(typeof (lib.Window ?? lib.default?.Window)?.all, "function");
+});
