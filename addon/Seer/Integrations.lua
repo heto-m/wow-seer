@@ -345,7 +345,75 @@ function collect.crafting()
 	return out
 end
 
+local MAX_UPGRADES = 3
+local MAX_PAIRS = 3
+
+local function CheapUpgradesApi()
+	local cu = CheapUpgrades
+	return type(cu) == "table" and type(cu.db) == "table" and type(cu.Evaluate) == "function" and cu or nil
+end
+
+-- Cheap Upgrades keeps 14 days of the lowest price it scanned; usual is the median before today.
+function ns.PriceHistory(link)
+	local cu = CheapUpgradesApi()
+	local h = cu and cu.History and type(link) == "string" and Try(cu.History.Stats, cu.History, link)
+	if type(h) ~= "table" or not h.usual then return nil end
+	return h.usual, h.days
+end
+
+local function UpgradeItem(r)
+	if type(r) ~= "table" or type(r.link) ~= "string" then return nil end
+	local usual, days = ns.PriceHistory(r.link)
+	return {
+		id = tonumber(r.link:match("item:(%d+)")), name = r.name or r.link:match("%[(.-)%]"),
+		price = r.price, cost = r.cost ~= r.price and r.cost or nil, level = r.reqLevel,
+		gain = Round(r.gain), pct = Round(r.pct), usual = usual, days = days, owned = r.owned or nil,
+	}
+end
+
+function collect.upgrades()
+	local cu = CheapUpgradesApi()
+	if not cu or type(cu.results) ~= "table" then return nil end
+	local names, order = {}, {}
+	for i, g in ipairs(cu.Scoring and cu.Scoring.GROUPS or {}) do
+		for _, slot in ipairs(g.slots or {}) do names[slot], order[slot] = g.name, i end
+	end
+	local bySlot, slots = {}, {}
+	for _, r in ipairs(cu.results) do
+		local key = names[r.slot] or r.slot
+		local entry = bySlot[key]
+		if not entry then
+			entry = { slot = key, order = order[r.slot] or 99, items = {}, seen = {} }
+			bySlot[key] = entry
+			slots[#slots + 1] = entry
+		end
+		local seen = (r.name or r.link) .. "#" .. tostring(r.price)
+		if #entry.items < MAX_UPGRADES and not entry.seen[seen] then
+			entry.seen[seen] = true
+			entry.items[#entry.items + 1] = UpgradeItem(r)
+		end
+	end
+	table.sort(slots, function(a, b) return a.order < b.order end)
+	for _, e in ipairs(slots) do e.order, e.seen = nil, nil end
+	local out = { slots = slots, pairs = {}, budget = Try(cu.GetBudget, cu), outdated = cu.listDirty and true or nil }
+	for i, p in ipairs(type(cu.weaponPairs) == "table" and cu.weaponPairs or {}) do
+		if i > MAX_PAIRS then break end
+		out.pairs[#out.pairs + 1] = {
+			main = UpgradeItem(p.main), off = UpgradeItem(p.off), price = p.price,
+			gain = Round(p.gain), pct = Round(p.pct),
+		}
+	end
+	local key = cu.History and Try(cu.History.RealmKey)
+	local scan = key and type(cu.db.scans) == "table" and cu.db.scans[key]
+	if type(scan) == "table" then out.scannedAt, out.scanned = scan.time, scan.total end
+	return out
+end
+
 function ns.HookAddons(mark)
+	if CheapUpgradesApi() and hooksecurefunc then
+		hooksecurefunc(CheapUpgrades, "Evaluate", function() mark("upgrades") end)
+		if CheapUpgrades.EvaluateLight then hooksecurefunc(CheapUpgrades, "EvaluateLight", function() mark("upgrades") end) end
+	end
 	local bis = BisApi()
 	if bis and bis.OnChanged then
 		pcall(bis.OnChanged, function()

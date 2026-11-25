@@ -26,6 +26,7 @@ export const SECTION_HELP: Record<string, string> = {
   training: "spells to learn, from the What's Training addon",
   crafting: "profession leveling plans, from the SkillUp Forever addon",
   alts: "the player's other characters, from the DataStore addon",
+  upgrades: "cheapest auction house upgrades per slot, from the Cheap Upgrades addon",
 };
 
 const WHEN_MISSING: Record<string, string> = {
@@ -41,6 +42,7 @@ const WHEN_MISSING: Record<string, string> = {
   training: "needs the What's Training addon",
   crafting: "needs the SkillUp Forever addon",
   alts: "needs the DataStore and DataStore_Characters addons; each character appears after logging in once",
+  upgrades: "needs the Cheap Upgrades addon and a scan with it; after each login it works out the list when the player opens the auction house or its window",
 };
 
 const STALE_GAME = 120;
@@ -243,6 +245,17 @@ const TOOLS: SectionTool[] = [
     view: (d, a) => views.alts(d.alts, a.name),
   },
   {
+    name: "get_upgrades",
+    description:
+      "The best gear upgrades on the auction house for each slot, from the Cheap Upgrades addon's last scan: price, " +
+      "score gain over what is worn (and %), required level, and the usual price over its last 14 days of scans. " +
+      "outdated means gear or level changed since: the player opens the auction house or the Cheap Upgrades window to update it. " +
+      "weapon_pairs are main and off hand weapons bought together (left out when filtering by slot). Items fit the player's class, spec and budget.",
+    inputSchema: schema({ slot: { ...STR, description: "part of the slot name, in the client's language" } }),
+    sections: ["upgrades"],
+    view: (d, a) => views.upgrades(d.upgrades, a.slot),
+  },
+  {
     name: "get_merchant",
     description: "The last vendor window the player opened: items and prices.",
     inputSchema: schema({ name: STR, usable_only: BOOL }),
@@ -267,7 +280,8 @@ const EXTRA_TOOLS = [
     description:
       "Auction prices from the player's Auctionator addon (lowest buyout it last saw, and how many days ago) " +
       "plus the vendor sell price and, for gear, Auctionator's disenchant value, for item IDs and/or everything in the bags. Works with the auction house closed. " +
-      "Random-suffix gear is priced per exact item when it comes from the bags.",
+      "Random-suffix gear is priced per exact item when it comes from the bags. With the Cheap Upgrades addon, usual is " +
+      "the median price over its last 14 days of scans and days how many days it has.",
     inputSchema: schema({
       item_ids: { type: "array", items: INT, description: "up to 200" },
       bags: { ...BOOL, description: "price every item in the bags" },

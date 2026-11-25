@@ -16,7 +16,7 @@
 ## Version: 0.6.0
 ## X-Curse-Project-ID: 1809157
 ## X-Wago-ID: QKyqjlK7
-## OptionalDeps: Auctionator, Questie, QuestieDB, Pawn, Polestar, WhatsTraining, SkillUpForever, ForeverLevelingBiS, NovaInstanceTracker, DataStore, DataStore_Characters, DataStore_Mails
+## OptionalDeps: Auctionator, Questie, QuestieDB, Pawn, Polestar, WhatsTraining, SkillUpForever, ForeverLevelingBiS, NovaInstanceTracker, DataStore, DataStore_Characters, DataStore_Mails, CheapUpgrades
 ## SavedVariables: SeerDB
 
 Locale.lua

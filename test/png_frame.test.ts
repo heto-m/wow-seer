@@ -15,7 +15,7 @@ import { readCells, renderPng, renderRaw } from "./render.js";
 const MOCK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "test", "mock_wow.lua");
 
 function messages(seconds: number, opts: {
-  width?: number; sx?: number; sy?: number; env?: Record<string, string>; reqs?: unknown[];
+  width?: number; sx?: number; sy?: number; env?: Record<string, string>; reqs?: unknown[]; slots?: number;
 } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seer-"));
   const old = process.env.WOW_DIR;
@@ -23,9 +23,10 @@ function messages(seconds: number, opts: {
     const wow = path.join(tmp, "_forever_");
     fs.mkdirSync(path.join(wow, "Interface", "AddOns"), { recursive: true });
     process.env.WOW_DIR = wow;
-    game.install(5);
+    const slots = opts.slots ?? 5;
+    game.install(slots);
     const reqs = [{ id: 1010, kind: "item", item: 4242 }, ...(opts.reqs ?? [])];
-    game.writeSlots(1, 5, { t: Math.floor(Date.now() / 1000), reqs });
+    game.writeSlots(1, slots, { t: Math.floor(Date.now() / 1000), reqs });
     const shots = path.join(tmp, "shots");
     fs.mkdirSync(shots);
     const r = spawnSync(LUA as string, [MOCK, game.addonsDir(), shots, String(seconds)],
@@ -91,7 +92,7 @@ test("capture mode holds the strip for the window capture instead of calling Scr
 });
 
 test("unconfirmed captures are resent by screenshot, and two in a row end capture mode", { skip: !LUA && "needs lua5.1" }, () => {
-  const { files, out, stdout } = messages(70, { env: { MOCK_CAPTURE: "saved" } });
+  const { files, out, stdout } = messages(70, { env: { MOCK_CAPTURE: "saved" }, slots: 10 });
   assert.match(stdout, /shots [1-9]/);
   assert.ok(files.some((f) => f.startsWith("cap")));
   assert.equal(out[0].capture, true);

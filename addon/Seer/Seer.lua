@@ -9,7 +9,7 @@ local LOST_CAPTURES = 2
 -- In the background the game draws a few frames a second and a held strip can miss every capture; a screenshot
 -- freeze costs nothing there.
 local CAPTURE_MIN_FPS = 20
-local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts" }
+local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts", "upgrades" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
 
@@ -19,7 +19,7 @@ local dirty = {}
 local acks = {}
 local done = {}
 local slotCount, nextSlot = 0, 1
-local lastPoll, lastPush, serverSeen = -1000, -1000, nil
+local lastPoll, lastPush, serverSeen, slotsOutAt = -1000, -1000, nil, nil
 local msgId = 0
 local unconfirmed = {}
 local worldReady, loading = false, false
@@ -35,8 +35,10 @@ local function Red(text)
 	return "|cffff4040" .. text .. "|r"
 end
 
+-- Once every slot is loaded the server can no longer answer, so a server seen until then stays alive.
 local function Alive()
-	return serverSeen ~= nil and GetTime() - serverSeen < ALIVE_FOR
+	if serverSeen == nil then return false end
+	return GetTime() - serverSeen < ALIVE_FOR or (slotsOutAt ~= nil and slotsOutAt - serverSeen < ALIVE_FOR)
 end
 
 local COMM_PREFIX = "Seer"
@@ -186,6 +188,7 @@ end
 local function Poll()
 	lastPoll = GetTime()
 	if nextSlot > slotCount then
+		slotsOutAt = slotsOutAt or lastPoll
 		if not warned.slots then
 			warned.slots = true
 			Say(slotCount == 0 and L.NO_SLOTS or L.SLOTS_USED)
@@ -212,6 +215,10 @@ local function Poll()
 end
 
 local function ResendLost()
+	if slotsOutAt then
+		wipe(unconfirmed)
+		return
+	end
 	local now = GetTime()
 	for id, sent in pairs(unconfirmed) do
 		if now - sent.at > CONFIRM_WITHIN then

@@ -55,7 +55,8 @@ Set `WOW_DIR` if your `_forever_` folder isn't in a default place. When Seer has
 | `get_trainer`, `get_profession`, `get_merchant` | the last window of that kind you opened, with filters |
 | `compare_item` | an item's tooltip next to what you wear in its slot, with the stat difference |
 | `get_item` | the tooltip of any item by ID |
-| `get_prices` | Auctionator's last seen price, its age, vendor and disenchant value, for item IDs or the whole bags |
+| `get_prices` | Auctionator's last seen price, its age, vendor and disenchant value, for item IDs or the whole bags; with Cheap Upgrades, the usual price over 14 days |
+| `get_upgrades` | the best auction house upgrades per slot from the last Cheap Upgrades scan: price, gain over what you wear, usual price |
 | `get_guide` | the step your Polestar guide is on, with quests, NPCs and coordinates |
 | `get_last_fight` | damage, healing and damage taken per group member in the last fight, from the game's damage meter |
 | `get_training` | spells to learn now and in the next levels, with cost (What's Training) |
@@ -67,7 +68,7 @@ Set `WOW_DIR` if your `_forever_` folder isn't in a default place. When Seer has
 
 Money is in copper.
 
-Some tools read other addons when they are installed: Auctionator (`get_prices`), Questie (quest locations), Pawn (gear values), Polestar (`get_guide`), What's Training (`get_training`), SkillUp Forever (`get_crafting`), AtlasLoot (`get_loot`, read from its files), Forever Leveling BiS (gear gain and stat weights), Nova Instance Tracker (hourly dungeon limit) and DataStore (`get_alts`). Without them those parts are just left out.
+Some tools read other addons when they are installed: Auctionator (`get_prices`), Questie (quest locations), Pawn (gear values), Polestar (`get_guide`), What's Training (`get_training`), SkillUp Forever (`get_crafting`), AtlasLoot (`get_loot`, read from its files), Forever Leveling BiS (gear gain and stat weights), Nova Instance Tracker (hourly dungeon limit), DataStore (`get_alts`) and Cheap Upgrades (`get_upgrades`, price history). Without them those parts are just left out.
 
 The addon includes [LibDeflate](https://github.com/SafeteeWoW/LibDeflate) (zlib licence, `addon/Seer/LibDeflate-LICENSE.txt`) to compress what it sends.
 

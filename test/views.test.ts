@@ -183,3 +183,22 @@ test("guide numbers steps like Polestar's window", () => {
   assert.equal(g.step, "38/72");
   assert.equal(g.steps_done, "40/59");
 });
+
+test("upgrades by slot from Cheap Upgrades", () => {
+  const u = {
+    scannedAt: Date.now() / 1000 - 7200, scanned: 812, budget: 50000,
+    slots: [{ slot: "Cabeza", items: [{ id: 7, name: "Casco", price: 300, gain: 1, pct: 2 }] },
+      { slot: "Anillos", items: [{ id: 1234, name: "Anillo", price: 9000, gain: 4.3, pct: 12, usual: 12000, days: 6 }] }],
+    pairs: [{ price: 9000, gain: 8, pct: 20.6, main: { name: "Espada", owned: true }, off: { id: 1234 } }],
+  };
+  const all = views.upgrades(u);
+  assert.equal(all.scan_age_hours, 2);
+  assert.deepEqual(all.slots[0].items.cols, ["id", "name", "price", "gain", "pct"]);
+  assert.equal(all.weapon_pairs.length, 1);
+  const rings = views.upgrades(u, "anillo");
+  assert.deepEqual(rings.slots.map((s: any) => s.slot), ["Anillos"]);
+  assert.deepEqual(rings.slots[0].items.cols, ["id", "name", "price", "gain", "pct", "usual", "days"]);
+  assert.equal(rings.weapon_pairs, undefined);
+  assert.equal(views.upgrades({ scannedAt: 1, slots: [], pairs: [] }).note, "no upgrades within the budget in the last scan");
+  assert.match(views.upgrades({ slots: [], pairs: [] }).note, /no auction house scan yet/);
+});
