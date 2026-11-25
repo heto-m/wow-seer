@@ -160,6 +160,15 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
     assert.match(updates[0], /0\.9\.0/);
     const version = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
     assert.deepEqual(comms.stdout.split(/\r?\n/).filter((l) => l.startsWith("sent ")), [`sent Seer v:${version} GUILD`, `sent Seer v:${version} PARTY`]);
+    game.writeSlots(1, 3, { t: Math.floor(Date.now() / 1000), reqs: [], got: [] });
+    const exhausted = spawnSync(LUA!, [path.join(ROOT, "test", "mock_wow.lua"), game.addonsDir(), fs.mkdtempSync(path.join(tmp, "shots-")), "420"], {
+      encoding: "utf8",
+      env: { ...process.env, MOCK_EVENT_AT: "400:BAG_UPDATE_DELAYED" },
+    });
+    assert.equal(exhausted.status, 0, exhausted.stderr);
+    assert.match(exhausted.stdout, /All request slots are used|Se han usado todas/);
+    assert.match(exhausted.stdout, /last shot 40\d/);
+    game.writeSlots(1, 3, { t: 0, reqs: [], got: [] });
     const jpeg = run("jpeg");
     assert.match(jpeg, /popup SEER_PNG jpeg/);
     assert.match(jpeg, /shots 0/);

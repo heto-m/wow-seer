@@ -1,6 +1,7 @@
 local ADDONS, OUT, SECONDS = arg[1], arg[2], tonumber(arg[3])
 
-local now, frames, timers, shots = 100, {}, {}, 0
+local START = 100
+local now, frames, timers, shots, lastShot = START, {}, {}, 0, nil
 local pendingEvents = {}
 
 local function Object()
@@ -69,6 +70,7 @@ end
 
 function Screenshot()
 	shots = shots + 1
+	lastShot = now - START
 	Dump(string.format("%s/shot%03d.txt", OUT, shots))
 	pendingEvents[#pendingEvents + 1] = { at = now + 0.4, event = "SCREENSHOT_SUCCEEDED" }
 end
@@ -253,6 +255,12 @@ if os.getenv("MOCK_SEND") then
 	C_Timer.After(18, function() SlashCmdList.SEER("status") end)
 end
 
+local late = os.getenv("MOCK_EVENT_AT")
+if late then
+	local at, event = late:match("^(%d+):(%S+)$")
+	C_Timer.After(tonumber(at), function() Fire(event) end)
+end
+
 local sent = {}
 if os.getenv("MOCK_COMMS") then
 	C_ChatInfo = { SendAddonMessage = function(prefix, text, channel) sent[#sent + 1] = prefix .. " " .. text .. " " .. channel end }
@@ -290,4 +298,5 @@ while now < stop do
 end
 print("shots " .. shots)
 print("captures " .. captures)
+print("last shot " .. tostring(lastShot and math.floor(lastShot)))
 for _, line in ipairs(sent) do print("sent " .. line) end
