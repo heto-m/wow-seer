@@ -150,7 +150,7 @@ test("the addon asks for PNG and sends nothing while screenshots are JPEG", { sk
     assert.deepEqual(h.upgrades.slots.map((s: any) => [s.slot, s.items.map((i: any) => [i.id, i.price, i.cost ?? null, i.gain, i.usual ?? null])]), [
       ["Cabeza", [[7, 300, 120, 1, null]]], ["Anillos", [[1234, 9000, null, 4.3, 12000]]],
     ]);
-    assert.deepEqual([h.upgrades.budget, h.upgrades.scanned, h.upgrades.scannedAt], [50000, 812, 1700000000]);
+    assert.deepEqual([h.upgrades.budget, h.upgrades.scanned, h.upgrades.scannedAt, h.upgrades.outdated], [50000, 812, 1700000000, true]);
     assert.deepEqual([h.upgrades.pairs[0].main.name, h.upgrades.pairs[0].main.owned, h.upgrades.pairs[0].off.days, h.upgrades.pairs[0].pct], ["Espada", true, 6, 20.6]);
     assert.deepEqual(h.alts.map((c: any) => [c.name, c.level, c.class, c.zone, c.mails ?? null, c.mailExpiresDays ?? null]), [
       ["Palla", 27, "PRIEST", "Tierras Altas", null, null], ["Bank", 5, "WARRIOR", "Entrañas", 2, 3.2],

@@ -42,7 +42,7 @@ const WHEN_MISSING: Record<string, string> = {
   training: "needs the What's Training addon",
   crafting: "needs the SkillUp Forever addon",
   alts: "needs the DataStore and DataStore_Characters addons; each character appears after logging in once",
-  upgrades: "needs the Cheap Upgrades addon and one auction house scan with it",
+  upgrades: "needs the Cheap Upgrades addon and a scan with it; after each login it works out the list when the player opens the auction house or its window",
 };
 
 const STALE_GAME = 120;
@@ -249,6 +249,7 @@ const TOOLS: SectionTool[] = [
     description:
       "The best gear upgrades on the auction house for each slot, from the Cheap Upgrades addon's last scan: price, " +
       "score gain over what is worn (and %), required level, and the usual price over its last 14 days of scans. " +
+      "outdated means gear or level changed since: the player opens the auction house or the Cheap Upgrades window to update it. " +
       "weapon_pairs are main and off hand weapons bought together (left out when filtering by slot). Items fit the player's class, spec and budget.",
     inputSchema: schema({ slot: { ...STR, description: "part of the slot name, in the client's language" } }),
     sections: ["upgrades"],

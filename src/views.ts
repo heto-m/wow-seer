@@ -639,7 +639,7 @@ export function upgrades(u: any, slot: string | null = null): any {
   const at = get(u, "scannedAt");
   const out: any = {
     scan_age_hours: typeof at === "number" ? Math.round((Date.now() / 1000 - at) / 360) / 10 : null,
-    auctions_scanned: get(u, "scanned"), budget: get(u, "budget"),
+    auctions_scanned: get(u, "scanned"), budget: get(u, "budget"), outdated: get(u, "outdated") ? true : undefined,
     slots: slots.map((s) => ({ slot: get(s, "slot"), items: table(or(get(s, "items"), []), UPGRADE_COLS) })),
   };
   const pairs = or(get(u, "pairs"), []) as any[];

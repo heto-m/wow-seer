@@ -391,7 +391,7 @@ function collect.upgrades()
 	end
 	table.sort(slots, function(a, b) return a.order < b.order end)
 	for _, e in ipairs(slots) do e.order = nil end
-	local out = { slots = slots, pairs = {}, budget = Try(cu.GetBudget, cu) }
+	local out = { slots = slots, pairs = {}, budget = Try(cu.GetBudget, cu), outdated = cu.listDirty and true or nil }
 	for i, p in ipairs(type(cu.weaponPairs) == "table" and cu.weaponPairs or {}) do
 		if i > MAX_PAIRS then break end
 		out.pairs[#out.pairs + 1] = {
@@ -408,6 +408,7 @@ end
 function ns.HookAddons(mark)
 	if CheapUpgradesApi() and hooksecurefunc then
 		hooksecurefunc(CheapUpgrades, "Evaluate", function() mark("upgrades") end)
+		if CheapUpgrades.EvaluateLight then hooksecurefunc(CheapUpgrades, "EvaluateLight", function() mark("upgrades") end) end
 	end
 	local bis = BisApi()
 	if bis and bis.OnChanged then
