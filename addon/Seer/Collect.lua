@@ -453,6 +453,7 @@ function collect.prices()
 		end
 		if #items >= MAX_PRICED then return end
 		local entry = { id = id, name = ItemName(id, link), count = count, vendor = VendorPrice(id) }
+		entry.usual, entry.days = ns.PriceHistory(link or select(2, Try(C_Item.GetItemInfo, id)))
 		if api then
 			entry.price, entry.age = AuctionatorPrice(api, id, link)
 			if Equippable(id) then
@@ -479,5 +480,5 @@ end
 
 ns.SECTIONS = {
 	"player", "equipment", "bags", "bank", "quests", "talents", "skills",
-	"trainer", "profession", "merchant", "auction", "items", "prices", "guide", "fight", "training", "crafting", "alts",
+	"trainer", "profession", "merchant", "auction", "items", "prices", "guide", "fight", "training", "crafting", "alts", "upgrades",
 }

@@ -9,7 +9,7 @@ local LOST_CAPTURES = 2
 -- In the background the game draws a few frames a second and a held strip can miss every capture; a screenshot
 -- freeze costs nothing there.
 local CAPTURE_MIN_FPS = 20
-local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts" }
+local ALWAYS = { "player", "equipment", "bags", "quests", "talents", "skills", "guide", "fight", "training", "crafting", "alts", "upgrades" }
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON, "Version")
 

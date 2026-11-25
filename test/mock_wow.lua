@@ -241,8 +241,23 @@ if os.getenv("MOCK_ADDONS") then
 		StepTotal = function() return 72 end,
 		GetProgress = function() return 40, 59 end,
 	} }
+	local ring = { link = "|Hitem:1234::::::::23:::::|h[Anillo barato]|h", name = "Anillo barato", price = 9000, cost = 9000,
+		reqLevel = 22, gain = 4.26, pct = 12.04, slot = 12 }
+	local sword = { link = "|Hitem:55::::|h[Espada]|h", price = 0, cost = 0, owned = true }
+	CheapUpgrades = {
+		db = { scans = { ["PvE-Horde"] = { time = 1700000000, total = 812 } } },
+		Evaluate = function() end,
+		GetBudget = function() return 50000 end,
+		results = { ring, { link = "|Hitem:7::::|h[Casco]|h", name = "Casco", price = 300, cost = 120, reqLevel = 20, gain = 1, pct = 2, slot = 1 } },
+		weaponPairs = { { main = sword, off = ring, price = 9000, gain = 8, pct = 20.55 } },
+		Scoring = { GROUPS = { { name = "Cabeza", slots = { 1 } }, { name = "Anillos", slots = { 11, 12 } } } },
+		History = {
+			RealmKey = function() return "PvE-Horde" end,
+			Stats = function(_, link) if link:find("item:1234") then return { usual = 12000, days = 6 } end end,
+		},
+	}
 	local c = ns.collect
-	print(ns.ToJson({ player = c.player(), bags = c.bags(), alts = c.alts(), trainer = c.trainer(), guide = c.guide() }))
+	print(ns.ToJson({ player = c.player(), bags = c.bags(), alts = c.alts(), trainer = c.trainer(), guide = c.guide(), upgrades = c.upgrades() }))
 	os.exit(0)
 end
 Fire("ADDON_LOADED", "Seer")

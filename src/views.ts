@@ -534,7 +534,7 @@ export function compare(item: any, equippedItems: any): any {
 export function prices(p: any): any {
   if (!truthy(p)) return null;
   const rows = (or(get(p, "items"), []) as any[]).map((i) => ({ ...i, age_days: get(i, "age") }));
-  const out: any = { items: table(rows, ["id", "name", "count", "price", "age_days", "vendor", "disenchant"]) };
+  const out: any = { items: table(rows, ["id", "name", "count", "price", "age_days", "usual", "days", "vendor", "disenchant"]) };
   if (!get(p, "auctionator")) out.note = "Auctionator is not installed, so only vendor prices are known";
   return out;
 }
@@ -629,6 +629,28 @@ export function crafting(c: any, profession: string | null = null): any {
     recipes: table(or(get(p, "recipes"), []), ["name", "count", "fromRank", "toRank", "learned", "color", "cost"]),
     reagents: table(or(get(p, "reagents"), []), ["id", "name", "need", "have", "source"]),
   })) };
+}
+
+const UPGRADE_COLS = ["id", "name", "price", "cost", "level", "gain", "pct", "usual", "days"];
+
+export function upgrades(u: any, slot: string | null = null): any {
+  if (!truthy(u)) return null;
+  const slots = (or(get(u, "slots"), []) as any[]).filter((s) => !truthy(slot) || matches(slot!, pyStr(get(s, "slot"))));
+  const at = get(u, "scannedAt");
+  const out: any = {
+    scan_age_hours: typeof at === "number" ? Math.round((Date.now() / 1000 - at) / 360) / 10 : null,
+    auctions_scanned: get(u, "scanned"), budget: get(u, "budget"),
+    slots: slots.map((s) => ({ slot: get(s, "slot"), items: table(or(get(s, "items"), []), UPGRADE_COLS) })),
+  };
+  const pairs = or(get(u, "pairs"), []) as any[];
+  if (pairs.length && !truthy(slot)) {
+    out.weapon_pairs = pairs.map((p) => ({
+      price: get(p, "price"), gain: get(p, "gain"), pct: get(p, "pct"),
+      main: get(p, "main"), off: get(p, "off"),
+    }));
+  }
+  if (!slots.length && !out.weapon_pairs) out.note = "no upgrades within the budget in the last scan";
+  return out;
 }
 
 export function alts(a: any, name: string | null = null): any {

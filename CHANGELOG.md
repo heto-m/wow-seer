@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- New integration: Cheap Upgrades. `get_upgrades` lists the best auction house upgrades per slot from its last scan, with price, gain over what you wear and the usual price. `get_prices` also gives the usual price over its last 14 days of scans.
+- Fixed Seer no longer sending changes about 3 minutes after all request slots were used. It now keeps sending until the next `/reload`.
+
 ## 0.6.0
 
 - The server now reads Seer's data from the game window, so the addon no longer takes a screenshot on every send. It still falls back to a screenshot when the game is in the background or a message was missed.
