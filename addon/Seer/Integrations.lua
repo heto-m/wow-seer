@@ -357,7 +357,7 @@ end
 function ns.PriceHistory(link)
 	local cu = CheapUpgradesApi()
 	local h = cu and cu.History and type(link) == "string" and Try(cu.History.Stats, cu.History, link)
-	if type(h) ~= "table" then return nil end
+	if type(h) ~= "table" or not h.usual then return nil end
 	return h.usual, h.days
 end
 
@@ -383,14 +383,18 @@ function collect.upgrades()
 		local key = names[r.slot] or r.slot
 		local entry = bySlot[key]
 		if not entry then
-			entry = { slot = key, order = order[r.slot] or 99, items = {} }
+			entry = { slot = key, order = order[r.slot] or 99, items = {}, seen = {} }
 			bySlot[key] = entry
 			slots[#slots + 1] = entry
 		end
-		if #entry.items < MAX_UPGRADES then entry.items[#entry.items + 1] = UpgradeItem(r) end
+		local seen = (r.name or r.link) .. "#" .. tostring(r.price)
+		if #entry.items < MAX_UPGRADES and not entry.seen[seen] then
+			entry.seen[seen] = true
+			entry.items[#entry.items + 1] = UpgradeItem(r)
+		end
 	end
 	table.sort(slots, function(a, b) return a.order < b.order end)
-	for _, e in ipairs(slots) do e.order = nil end
+	for _, e in ipairs(slots) do e.order, e.seen = nil, nil end
 	local out = { slots = slots, pairs = {}, budget = Try(cu.GetBudget, cu), outdated = cu.listDirty and true or nil }
 	for i, p in ipairs(type(cu.weaponPairs) == "table" and cu.weaponPairs or {}) do
 		if i > MAX_PAIRS then break end

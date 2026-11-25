@@ -249,7 +249,7 @@ if os.getenv("MOCK_ADDONS") then
 		Evaluate = function() end,
 		GetBudget = function() return 50000 end,
 		listDirty = true,
-		results = { ring, { link = "|Hitem:7::::|h[Casco]|h", name = "Casco", price = 300, cost = 120, reqLevel = 20, gain = 1, pct = 2, slot = 1 } },
+		results = { ring, ring, { link = "|Hitem:7::::|h[Casco]|h", name = "Casco", price = 300, cost = 120, reqLevel = 20, gain = 1, pct = 2, slot = 1 } },
 		weaponPairs = { { main = sword, off = ring, price = 9000, gain = 8, pct = 20.55 } },
 		Scoring = { GROUPS = { { name = "Cabeza", slots = { 1 } }, { name = "Anillos", slots = { 11, 12 } } } },
 		History = {
