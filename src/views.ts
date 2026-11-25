@@ -649,7 +649,8 @@ export function upgrades(u: any, slot: string | null = null): any {
       main: get(p, "main"), off: get(p, "off"),
     }));
   }
-  if (!slots.length && !out.weapon_pairs) out.note = "no upgrades within the budget in the last scan";
+  if (at == null) out.note = "Cheap Upgrades has no auction house scan yet: the player scans with it in the auction house";
+  else if (!slots.length && !out.weapon_pairs) out.note = "no upgrades within the budget in the last scan";
   return out;
 }
 

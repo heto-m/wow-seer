@@ -199,5 +199,6 @@ test("upgrades by slot from Cheap Upgrades", () => {
   assert.deepEqual(rings.slots.map((s: any) => s.slot), ["Anillos"]);
   assert.deepEqual(rings.slots[0].items.cols, ["id", "name", "price", "gain", "pct", "usual", "days"]);
   assert.equal(rings.weapon_pairs, undefined);
-  assert.equal(views.upgrades({ slots: [], pairs: [] }).note, "no upgrades within the budget in the last scan");
+  assert.equal(views.upgrades({ scannedAt: 1, slots: [], pairs: [] }).note, "no upgrades within the budget in the last scan");
+  assert.match(views.upgrades({ slots: [], pairs: [] }).note, /no auction house scan yet/);
 });
